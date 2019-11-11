@@ -25,6 +25,7 @@ def docs(search=None):
                 if inspect.isfunction(m):
                     print("\t", k, ":", m.__doc__, "\n")
             print("")
+    if search is None: print("\nExample of syntax:\nMg*ep*ep + Ba*(2*NO3) > Ba*ep*ep + Mg*(2*NO3)\nBecomes:\n[Mg]²⁺ + Ba(NO₃)₂ -> [Ba]²⁺ + Mg(NO₃)₂")
 
 class Charge:
     """Utility class for ionizing molecules."""
