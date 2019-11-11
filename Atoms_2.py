@@ -231,18 +231,12 @@ class Molecule:
 
     def append(self, x):
         """Appends something onto the molecule"""
-        #new_parts = dict((i, self.count*j) for i, j in self.parts.items())
         amount = x.extract_count()
 
         if x in self.parts:
             self.parts[x] += amount
         else:
             self.parts[x] = amount
-
-##    def polyatomify(self):
-##        """Converts some components into polyatomic ions"""
-##        raise NotImplemented
-##        pass
 
     def molar_mass(self):
         """Calculate the molar mass of the element"""
@@ -252,13 +246,6 @@ class Molecule:
     def oxidation(self):
         """Get the oxidation state/charge of the thing"""
         return self.charge
-##        charge = 0
-##        for i, j in self.parts.items():
-##            if i.oxidation() is None:
-##                return None
-##            else:
-##                charge += i.oxidation() * j
-##        return charge
 
     def symbol(self):
         """Returns the symbol of the element"""
@@ -441,69 +428,19 @@ class Molecule:
             raise ValueError("There is currently no system in place to handle this argument")
 
         copy = self.copy()
-        
-##        parts = list(self.parts.items())
-##        part1 = Molecule({parts[0][0]: parts[0][1]})
-##        part1 = part1.atomize()
-##        part2 = Molecule({parts[1][0]: parts[1][1]})
-##        part2 = part2.atomize()
-##        
-##        if part1.singular() in acids and part1.singular() not in strong_acids:
-##            print("Warning: {} is a weak acid, check to make sure you want to write it as dissolved")
-##        elif part1.singular() in bases and part1.singular() not in strong_bases:
-##            print("Warning: {} is a weak base, check to make sure you want to write it as dissolved")
-##
-##        if part2.singular() in acids and part2.singular() not in strong_acids:
-##            print("Warning: {} is a weak acid, check to make sure you want to write it as dissolved")
-##        elif part2.singular() in bases and part2.singular() not in strong_bases:
-##            print("Warning: {} is a weak base, check to make sure you want to write it as dissolved")
 
         # Assign oxidation states
         result = Combination({})
         for i, j in self._assign_oxidation().items():
             result += Molecule({i: 1}, count=copy.parts[i]*count, charge=j)
-        return result
+
+        # Check for potentially unregistered acid
+        H_ion = H*ep
+        if H_ion in result.parts:
+            if self not in acids:
+                print("Warning: Is {} an acid that is not currently registered in the lookup table?".format(self))
         
-##        if part1.oxidation() is not None:
-##            part1.charge = part1.oxidation()
-##            if part2.oxidation() is None:
-##                part2.charge = -1 * parts[0][0].oxidation() * part1.count / part2.count
-##                if round(part2.charge) == part2.charge:
-##                    part2.charge = int(part2.charge)
-##            else:
-##                part2 = Molecule({parts[1][0]: parts[1][1]})
-##                part2 = part2.atomize()
-##                part2.charge = part2.oxidation()
-##                result = (count*part1 + count*part2)
-##                # Briefly check for unregistered acid
-##                if not ignore_ph:
-##                    H_ion = Molecule({H: 1})
-##                    H_ion.charge = 1
-##                    if H_ion in result.parts:
-##                        if self not in acids:
-##                            print("Notification: Is {} an acid that is not currently registered in the lookup table?".format(self))
-##            return (count*part1 + count*part2)
-##        else:
-##            if part2.oxidation() is not None:
-##                part1 = Molecule({parts[0][0]: parts[0][1]})
-##                part1 = part1.atomize()
-##                part2 = Molecule({parts[1][0]: parts[1][1]})
-##                part2 = part2.atomize()
-##                part2.charge = part2.oxidation()
-##                part1.charge = -1 * part2.oxidation() * part2.count / part1.count
-##                if round(part1.charge) == part1.charge:
-##                    part1.charge = int(part1.charge)
-##                result = (count*part1 + count*part2)
-##                # Briefly check for unregistered acid
-##                if not ignore_ph:
-##                    H_ion = Molecule({H: 1})
-##                    H_ion.charge = 1
-##                    if H_ion in result.parts:
-##                        if self not in acids:
-##                            print("Notification: Is {} an acid that is not currently registered in the lookup table?".format(self))
-##                return result
-##            else:
-##                raise ValueError("Preferred oxidation states for ions in {} not found!".format(self))
+        return result
 
     def _percents(self):
         """Get the percent mass of each element in a molecule"""
@@ -533,7 +470,7 @@ class Molecule:
             if self.charge == 0:
                 return {ion_list[0]: 0}
             else:
-                return {ion_list[0]: self.charge}
+                return {ion_list[0]: self.charge / self.parts[ion_list[0]]}
 
         # Assume polyatomic ions are correct
         for i in ion_list:
@@ -542,7 +479,7 @@ class Molecule:
                 current_charge -= i.oxidation() * self.parts[i]
                 ion_list.remove(i)
             if len(ion_list) == 1:
-                result[ion_list[0]] = current_charge
+                result[ion_list[0]] = current_charge / self.parts[ion_list[0]]
                 return result
 
         # Apply rules for group 1A compounds
@@ -552,7 +489,7 @@ class Molecule:
                 current_charge -= 1 * self.parts[i]
                 ion_list.remove(i)
             if len(ion_list) == 1:
-                result[ion_list[0]] = current_charge
+                result[ion_list[0]] = current_charge / self.parts[ion_list[0]]
                 return result
 
         # Apply rules for group 2A compounds
@@ -562,7 +499,7 @@ class Molecule:
                 current_charge -= 2 * self.parts[i]
                 ion_list.remove(i)
             if len(ion_list) == 1:
-                result[ion_list[0]] = current_charge
+                result[ion_list[0]] = current_charge / self.parts[ion_list[0]]
                 return result
 
         # Apply rules for fluorine, hydrogen, and oxygen
@@ -572,7 +509,7 @@ class Molecule:
             ion_list.remove(F)
 
         if len(ion_list) == 1:
-            result[ion_list[0]] = current_charge
+            result[ion_list[0]] = current_charge / self.parts[ion_list[0]]
             return result
         
         if H in ion_list:
@@ -581,7 +518,7 @@ class Molecule:
             ion_list.remove(H)
 
         if len(ion_list) == 1:
-            result[ion_list[0]] = current_charge
+            result[ion_list[0]] = current_charge / self.parts[ion_list[0]]
             return result
 
         if O in ion_list:
@@ -590,7 +527,7 @@ class Molecule:
             ion_list.remove(O)
 
         if len(ion_list) == 1:
-            result[ion_list[0]] = current_charge
+            result[ion_list[0]] = current_charge / self.parts[ion_list[0]]
             return result
 
         # Apply rules for group 7A ions
@@ -600,7 +537,7 @@ class Molecule:
                 current_charge += 1 * self.parts[i]
                 ion_list.remove(i)
             if len(ion_list) == 1:
-                result[ion_list[0]] = current_charge
+                result[ion_list[0]] = current_charge / self.parts[ion_list[0]]
                 return result
 
         # Apply rules for group 6A ions
@@ -610,7 +547,7 @@ class Molecule:
                 current_charge += 2 * self.parts[i]
                 ion_list.remove(i)
             if len(ion_list) == 1:
-                result[ion_list[0]] = current_charge
+                result[ion_list[0]] = current_charge / self.parts[ion_list[0]]
                 return result
 
         if len(ion_list) != 1:
@@ -660,7 +597,7 @@ class Molecule:
     def __add__(self, x):
         count = self.extract_count()
         result = Combination({self: count})
-        if type(x) in [Molecule, Element]:
+        if type(x) in [Molecule, Element, Polyatomic]:
             # Molecule + Molecule -> Combination OR
             # Molecule + Element -> Combination 
             result.append(x)
@@ -716,6 +653,26 @@ class Polyatomic:
     def __repr__(self):
         return self.symbol()
 
+    def grams_to_moles(self, grams, element=None):
+        """Converts grams of a molecule to moles.  If an element is specified, the number of
+        moles of a particular element will be isolated and returned"""
+        if element:
+            return self.parts[element] * grams / self.molar_mass()
+        else:
+            return grams / self.molar_mass()
+
+    def g2mol(self, grams):
+        """Alias for grams_to_moles"""
+        return self.grams_to_moles(grams)
+
+    def moles_to_grams(self, moles, element=None):
+        """Converts the number of moles of a molecule to grams.  If an element is specified,
+        the mass of that element will be isolated and returned instead."""
+        if element:
+            return moles * (Molecule({element: self.parts[element]})).molar_mass()
+        else:
+            return moles * self.molar_mass()
+    
     def molar_mass(self):
         """Gets the molar mass of the polyatomic ion"""
         self.mol_mass = sum([j*i.molar_mass() for i, j in self.parts.items()])
@@ -762,7 +719,6 @@ class Polyatomic:
 
     def append(self, x):
         """Appends something onto the molecule"""
-        #new_parts = dict((i, self.count*j) for i, j in self.parts.items())
         amount = x.extract_count()
 
         if self == x:
@@ -805,8 +761,13 @@ class Polyatomic:
         else:
             return (self.get_atoms()) == (x.get_atoms()) and (self.count == x.count)
 
-    def assign_oxidation(self):
+    def _assign_oxidation(self):
+        """Returns the oxidation state of the ion"""
         return {self: self.oxidation()}
+
+    def assign_oxidation(self):
+        """Wrapper for _assign_oxidation"""
+        print(self, "-", self.oxidation())
     
     def __mul__(self, x):
         """Overload the multiplication operator for 'ease of use'"""
@@ -986,13 +947,43 @@ class Combination:
         for i, j in self.parts.items():
             result += (j*i).dissolve(ignore_ph)
         return result
+
+    def _assign_oxidation(self):
+        """Assigns oxidation numbers to the ions in the combination"""
+        stage1 = []
+        parts = list(dict(self.parts).items())
+        parts.sort(key=lambda x: x[0].molar_mass())
+        #print(parts)
+        
+        for i, j in parts:
+            copy = i.copy()
+            copy = j * copy
+            stage1.append(copy._assign_oxidation())
+
+        stage2 = []
+        stage2.append([])
+        
+        for i in stage1:
+            for j, k in i.items():
+                for m, n in enumerate(stage2):
+                    if [j, k] not in n:
+                        stage2[m].append([j, k])
+
+        stage3 = []
+        for i, j in enumerate(stage2):
+            stage3.append({})
+            stage3[i] = dict(j)
+
+        return stage3
+                
         
     def assign_oxidation(self):
         """Wrapper for the _assign_oxidation function to make the output more readable"""
-        for i, j in self.parts.items():
-            copy = i.copy()
-            copy = j*copy
-            copy.assign_oxidation()
+        result = self._assign_oxidation()
+
+        for i in result:
+            for j, k in i.items():
+                print(j, "-", k)
 
 class Reaction:
     """Class representing chemical reactions, composed of combinations"""
@@ -1021,6 +1012,35 @@ class Reaction:
                 return False
         return True
 
+    def verify_charge(self):
+        """Checks whether the charges in a reaction are conserved, let alone possible"""
+        # Determine net charges on both sides of equation
+        left_charge = 0
+        for i, j in self.left.parts.items():
+            left_charge += j * i.charge
+
+        right_charge = 0
+        for i, j in self.right.parts.items():
+            right_charge += j * i.charge
+
+        # Check for noninteger charges
+        if round(left_charge) != left_charge:
+            return False
+        if round(right_charge) != right_charge:
+            return False
+
+        for i in self.left._assign_oxidation():
+            for j, k in i.items():
+                if round(k) != k:
+                    return False
+
+        for i in self.right._assign_oxidation():
+            for j, k in i.items():
+                if round(k) != k:
+                    return False
+
+        return left_charge == right_charge
+
     def solve(self, limit=10):
         """Auto balances a chemcial reaction.  Will continue until reaching the maximum number of a molecule allowed."""
         # First check if the two sides have the same elements
@@ -1048,7 +1068,6 @@ class Reaction:
             new_left = self.left.copy()
             # Place test values into left-hand side of reaction
             new_left.parts = dict(zip([j[0] for j in new_left.parts.items()], i))
-            
             for j in r_coeffs:
                 # First check if all coefficients are even, and if so, discard (won't be in simplest form)
                 even_right = True
@@ -1061,9 +1080,10 @@ class Reaction:
                 # Place test values into right-hand side of reaction and check validity
                 new_right = self.right.copy()
                 new_right.parts = dict(zip([k[0] for k in new_right.parts.items()], j))
-                    
-                if Reaction(new_left, new_right).verify():
-                    return Reaction(new_left, new_right)
+
+                possible = Reaction(new_left, new_right)
+                if possible.verify() and possible.verify_charge():
+                    return possible
 
         raise TimeoutError("""Unable to solve the reaction within the specified limit ({}),
 Consider raising the limit by using .solve(limit=NEW_LIMIT_HERE)""".format(limit))
@@ -1111,11 +1131,10 @@ Consider raising the limit by using .solve(limit=NEW_LIMIT_HERE)""".format(limit
         reactors = {}
         print("Reacting:", self)
         print("Enter starting conditions (append 'grams' to denote a value in grams, otherwise moles are assumed):")
-        for i in self.left.parts:
+        for i, j in self.left.parts.items():
             new_reactor = input(i.symbol() + ": ")
             if "grams" in new_reactor:
                 new_reactor = abs(float(new_reactor.replace(" grams", "")))
-                i.extract_count()
                 new_reactor = i.grams_to_moles(new_reactor)
                 reactors[i] = new_reactor
             else:
@@ -1126,14 +1145,12 @@ Consider raising the limit by using .solve(limit=NEW_LIMIT_HERE)""".format(limit
         print("Excess: ", excess)
         
         print("Products (In grams):")
-        for i in best.right.parts:
-            count = i.extract_count()
-            print(i, " - ",i.moles_to_grams(count), "grams")
+        for i, j in best.right.parts.items():
+            print(i, " - ", i.moles_to_grams(j), "grams")
 
         print("Excess (In grams):")
-        for i in excess.parts:
-            count = i.extract_count()
-            if count != 0.0: print(i, " - ", i.moles_to_grams(i), "grams")
+        for i, j in excess.parts.items():
+            if j != 0.0: print(i, " - ", i.moles_to_grams(j), "grams")
 
     def sim(self):
         """Alias for simulate"""
@@ -1189,9 +1206,19 @@ Consider raising the limit by using .solve(limit=NEW_LIMIT_HERE)""".format(limit
     def assign_oxidation(self):
         """Assigns oxidation states to all ions in the reaction"""
         print("Left:")
-        self.left.assign_oxidation()
+        for i in self.left._assign_oxidation():
+            for j, k in i.items():
+                print(j, "-", k)
+        
         print("\nRight:")
-        self.right.assign_oxidation()
+        for i in self.right._assign_oxidation():
+            for j, k in i.items():
+                print(j, "-", k)
+        
+
+    def solve_redox(self):
+        """"""
+        pass
 
 # Declare elements
 H = Element("H", 1.008, 1, 1)
