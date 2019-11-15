@@ -70,15 +70,15 @@ class Element:
 
     elements = {}
 
-    def __init__(self, symbol, molar_mass, atomic_number, oxidation):
+    def __init__(self, symbol, molar_mass, atomic_number, oxidation, specific_heat=None):
         """Elements are referenced by their atomic symbol.  They may be multiplied together (or with numbers) to create molecules"""
         self.sym = symbol
         self.mol_mass = molar_mass
         self.atomic_number = atomic_number
-        #self.electrons = atomic_number
         self.charge = 0
         self.neutrons = round(molar_mass) - atomic_number
-        self.ox = oxidation  
+        self.ox = oxidation
+        self.specific_heat = specific_heat
         Element.elements[symbol] = self
 
     def molar_mass(self):
@@ -148,6 +148,10 @@ class Element:
     def atoms_to_grams(self, atoms):
         """Converts atoms of an element to grams"""
         return self.moles_to_grams(Element.atoms_to_moles(atoms))
+
+    def heat(self, mass, temperature_change):
+        """Determines the energy change after enacting a temperature change on a mass of an element"""
+        return mass * self.specific_heat * temperature_change
 
     def __mul__(self, x):
         if type(x) == Element:
@@ -232,7 +236,12 @@ class Molecule:
     def append(self, x):
         """Appends something onto the molecule"""
         amount = x.extract_count()
+        
+        # First check if the thing is an element that has been cast as a 'molecule'
+        if type(x) == Molecule and len(x.parts) == 1 and tuple(x.parts.items())[0][1] == 1:
+            x = tuple(x.parts.items())[0][0]        
 
+        # Add thing to molecule dictionary by the amount previously extracted
         if x in self.parts:
             self.parts[x] += amount
         else:
@@ -432,6 +441,8 @@ class Molecule:
         # Assign oxidation states
         result = Combination({})
         for i, j in self._assign_oxidation().items():
+            if round(j) != j:
+                raise Exception("An unknown error occured while attempting to assign charges: non-integer charge")
             result += Molecule({i: 1}, count=copy.parts[i]*count, charge=j)
 
         # Check for potentially unregistered acid
@@ -985,6 +996,47 @@ class Combination:
             for j, k in i.items():
                 print(j, "-", k)
 
+    def equil_temp_f(self):
+        """Calculates the final temperature given a series of initial conditions"""
+        numerator = 0
+        denominator = 0
+        print("Please enter mass in grams")
+        cal_const = float(input("Calorimeter Constant: "))
+        cal_temp_i = float(input("Calorimeter Initial Temp - "))
+        numerator += cal_const * cal_temp_i
+        denominator += cal_const
+        
+        for i in self.parts:
+            mass = float(input(str(i.singular()) + " Mass - "))
+            sp_heat = float(input(str(i.singular()) + " Specific Heat - "))
+            temp_i = float(input(str(i.singular()) + " Initial Temp - "))
+            numerator += mass * sp_heat * temp_i
+            denominator += mass * sp_heat
+
+        return numerator / denominator
+
+    def equil_sp_heat(self):
+        result = 0
+        print("Enter 'None' to indicate the unknown specific heat")
+        final_t = float(input("Final Temp - "))
+        
+        cal_const = float(input("Calorimeter Constant: "))
+        cal_temp_i = float(input("Calorimeter Initial Temp - "))
+        result += cal_const * (final_t - cal_temp_i)
+        
+        for i in self.parts:
+            mass = float(input(str(i.singular()) + " Mass - "))
+            temp_i = float(input(str(i.singular()) + " Initial Temp - "))
+            sp_heat = input(str(i.singular()) + " Specific Heat - ")
+            if sp_heat == "None":
+                mass_u = mass
+                temp_i_u = temp_i
+            else:
+                sp_heat = float(sp_heat)
+                result += mass * sp_heat * (final_t - temp_i)
+
+        return result / (-1 * mass_u * (final_t - temp_i_u))
+
 class Reaction:
     """Class representing chemical reactions, composed of combinations"""
 
@@ -1221,124 +1273,124 @@ Consider raising the limit by using .solve(limit=NEW_LIMIT_HERE)""".format(limit
         pass
 
 # Declare elements
-H = Element("H", 1.008, 1, 1)
-He = Element("He", 4.003, 2, 0)
-Li = Element("Li", 6.94, 3, 1)
-Be = Element("Be", 9.012, 4, 2)
-B = Element("B", 10.81, 5, None)
-C = Element("C", 12.01, 6, -4)
-N = Element("N", 14.01, 7, -3)
-O = Element("O", 16.00, 8, -2)
-F = Element("F", 19.00, 9, -1)
-Ne = Element("Ne", 20.18, 10, 0)
-Na = Element("Na", 22.99, 11, 1)
-Mg = Element("Mg", 24.31, 12, 2)
-Al = Element("Al", 26.98, 13, None)
-Si = Element("Si", 28.09, 14, None)
-P = Element("P", 30.97, 15, -3)
-S = Element("S", 32.06, 16, -2)
-Cl = Element("Cl", 35.45, 17, -1)
-Ar = Element("Ar", 39.95, 18, 0)
-K = Element("K", 39.10, 19, 1)
-Ca = Element("Ca", 40.08, 20, 2)
-Sc = Element("Sc", 44.96, 21, None)
-Ti = Element("Ti", 47.87, 22, None)
-V = Element("V", 50.94, 23, None)
-Cr = Element("Cr", 52.00, 24, 3)
-Mn = Element("Mn", 54.94, 25, None)
-Fe = Element("Fe", 55.85, 26, None)
-Co = Element("Co", 58.93, 27, None)
-Ni = Element("Ni", 58.69, 28, None)
-Cu = Element("Cu", 63.55, 29, None)
-Zn = Element("Zn", 65.38, 30, 2)
-Ga = Element("Ga", 69.72, 31, None)
-Ge = Element("Ge", 72.63, 32, None)
-As = Element("As", 74.92, 33, -3)
-Se = Element("Se", 78.97, 34, -2)
-Br = Element("Br", 79.90, 35, -1)
-Kr = Element("Kr", 83.80, 36, 0)
-Rb = Element("Rb", 85.47, 37, 1)
-Sr = Element("Sr", 87.62, 38, 2)
-Y = Element("Y", 88.91, 39, None)
-Zr = Element("Zr", 91.22, 40, None)
-Nb = Element("Nb", 92.91, 41, None)
-Mo = Element("Mo", 95.95, 42, None)
-Tc = Element("Tc", 97, 43, None)
-Ru = Element("Ru", 101.1, 44, None)
-Rh = Element("Rh", 102.9, 45, None)
-Pd = Element("Pd", 106.4, 46, None)
-Ag = Element("Ag", 107.9, 47, 1)
-Cd = Element("Cd", 112.4, 48, 2)
-In = Element("In", 114.8, 49, None)
-Sn = Element("Sn", 118.7, 50, None)
-Sb = Element("Sb", 121.8, 51, -3)
-Te = Element("Te", 127.6, 52, -2)
-I = Element("I", 126.9, 53, -1)
-Xe = Element("Xe", 131.3, 54, 0)
-Cs = Element("Cs", 132.9, 55, 1)
-Ba = Element("Ba", 137.3, 56, 2)
-La = Element("La", 138.9, 57, None)
-Ce = Element("Ce", 140.1, 58, None)
-Pr = Element("Pr", 140.9, 59, None)
-Nd = Element("Nd", 144.2, 60, None)
-Pm = Element("Pm", 145, 61, None)
-Sm = Element("Sm", 150.4, 62, None)
-Eu = Element("Eu", 152.0, 63, None)
-Gd = Element("Gd", 157.3, 64, None)
-Tb = Element("Tb", 158.9, 65, None)
-Dy = Element("Dy", 162.5, 66, None)
-Ho = Element("Ho", 164.9, 67, None)
-Er = Element("Er", 167.3, 68, None)
-Tm = Element("Tm", 168.9, 69, None)
-Yb = Element("Yb", 173.1, 70, None)
-Lu = Element("Lu", 175.0, 71, None)
-Hf = Element("Hf", 178.5, 72, None)
-Ta = Element("Ta", 180.9, 73, None)
-W = Element("W", 183.8, 74, None)
-Re = Element("Re", 186.2, 75, None)
-Os = Element("Os", 190.2, 76, None)
-Ir = Element("Ir", 192.2, 77, None)
-Pt = Element("Pt", 195.1, 78, None)
-Au = Element("Au", 197.0, 79, None)
-Hg = Element("Hg", 200.6, 80, None)
-Tl = Element("Tl", 204.4, 81, None)
-Pb = Element("Pb", 207.2, 82, None)
-Bi = Element("Bi", 209.0, 83, -3)
-Po = Element("Po", 209, 84, -2)
-At = Element("At", 210, 85, -1)
-Rn = Element("Rn", 222, 86, 0)
-Fr = Element("Fr", 223, 87, 1)
-Ra = Element("Ra", 226, 88, 2)
-Ac = Element("Ac", 227, 89, None)
-Th = Element("Th", 232.0, 90, None)
-Pa = Element("Pa", 231.0, 91, None)
-U = Element("U", 238.0, 92, None)
-Np = Element("Np", 237, 93, None)
-Pu = Element("Pu", 244, 94, None)
-Am = Element("Am", 243, 95, None)
-Cm = Element("Cm", 247, 96, None)
-Bk = Element("Bk", 247, 97, None)
-Cf = Element("Cf", 251, 98, None)
-Es = Element("Es", 252, 99, None)
-Fm = Element("Fm", 257, 100, None)
-Md = Element("Md", 258, 101, None)
-No = Element("No", 259, 102, None)
-Lr = Element("Lr", 262, 103, None)
-Rf = Element("Rf", 267, 104, None)
-Db = Element("Db", 270, 105, None)
-Sg = Element("Sg", 271, 106, None)
-Bh = Element("Bh", 270, 107, None)
-Hs = Element("Hs", 277, 108, None)
-Mt = Element("Mt", 276, 109, None)
-Ds = Element("Ds", 281, 110, None)
-Rg = Element("Rg", 282, 111, None)
-Cn = Element("Cn", 285, 112, None)
-Nh = Element("Nh", 285, 113, None)
-Fl = Element("Fl", 289, 114, None)
-Mc = Element("Mc", 288, 115, None)
-Lv = Element("Lv", 293, 116, None)
-Ts = Element("Ts", 294, 117, -1)
-Og = Element("Og", 294, 118, 0)
+H = Element("H", 1.008, 1, 1, None)
+He = Element("He", 4.003, 2, 0, 5.19)
+Li = Element("Li", 6.94, 3, 1, None)
+Be = Element("Be", 9.012, 4, 2, None)
+B = Element("B", 10.81, 5, None, None)
+C = Element("C", 12.01, 6, -4, None)
+N = Element("N", 14.01, 7, -3, None)
+O = Element("O", 16.00, 8, -2, None)
+F = Element("F", 19.00, 9, -1, None)
+Ne = Element("Ne", 20.18, 10, 0, 1.03)
+Na = Element("Na", 22.99, 11, 1, None)
+Mg = Element("Mg", 24.31, 12, 2, 1.017)
+Al = Element("Al", 26.98, 13, None, 0.9)
+Si = Element("Si", 28.09, 14, None, 0.703)
+P = Element("P", 30.97, 15, -3, None)
+S = Element("S", 32.06, 16, -2, 0.732)
+Cl = Element("Cl", 35.45, 17, -1, None)
+Ar = Element("Ar", 39.95, 18, 0, None)
+K = Element("K", 39.10, 19, 1, None)
+Ca = Element("Ca", 40.08, 20, 2, None)
+Sc = Element("Sc", 44.96, 21, None, None)
+Ti = Element("Ti", 47.87, 22, None, 0.523)
+V = Element("V", 50.94, 23, None, None)
+Cr = Element("Cr", 52.00, 24, 3, 0.448)
+Mn = Element("Mn", 54.94, 25, None, None)
+Fe = Element("Fe", 55.85, 26, None, 0.444)
+Co = Element("Co", 58.93, 27, None, None)
+Ni = Element("Ni", 58.69, 28, None, 0.444)
+Cu = Element("Cu", 63.55, 29, None, 0.385)
+Zn = Element("Zn", 65.38, 30, 2, 0.388)
+Ga = Element("Ga", 69.72, 31, None, None)
+Ge = Element("Ge", 72.63, 32, None, None)
+As = Element("As", 74.92, 33, -3, None)
+Se = Element("Se", 78.97, 34, -2, None)
+Br = Element("Br", 79.90, 35, -1, None)
+Kr = Element("Kr", 83.80, 36, 0, 0.247)
+Rb = Element("Rb", 85.47, 37, 1, None)
+Sr = Element("Sr", 87.62, 38, 2, None)
+Y = Element("Y", 88.91, 39, None, None)
+Zr = Element("Zr", 91.22, 40, None, None)
+Nb = Element("Nb", 92.91, 41, None, None)
+Mo = Element("Mo", 95.95, 42, None, None)
+Tc = Element("Tc", 97, 43, None, None)
+Ru = Element("Ru", 101.1, 44, None, None)
+Rh = Element("Rh", 102.9, 45, None, None)
+Pd = Element("Pd", 106.4, 46, None, None)
+Ag = Element("Ag", 107.9, 47, 1, 0.237)
+Cd = Element("Cd", 112.4, 48, 2, 0.232)
+In = Element("In", 114.8, 49, None, None)
+Sn = Element("Sn", 118.7, 50, None, 0.213)
+Sb = Element("Sb", 121.8, 51, -3, None)
+Te = Element("Te", 127.6, 52, -2, None)
+I = Element("I", 126.9, 53, -1, None)
+Xe = Element("Xe", 131.3, 54, 0, 0.158)
+Cs = Element("Cs", 132.9, 55, 1, None)
+Ba = Element("Ba", 137.3, 56, 2, None)
+La = Element("La", 138.9, 57, None, None)
+Ce = Element("Ce", 140.1, 58, None, None)
+Pr = Element("Pr", 140.9, 59, None, None)
+Nd = Element("Nd", 144.2, 60, None, None)
+Pm = Element("Pm", 145, 61, None, None)
+Sm = Element("Sm", 150.4, 62, None, None)
+Eu = Element("Eu", 152.0, 63, None, None)
+Gd = Element("Gd", 157.3, 64, None, None)
+Tb = Element("Tb", 158.9, 65, None, None)
+Dy = Element("Dy", 162.5, 66, None, None)
+Ho = Element("Ho", 164.9, 67, None, None)
+Er = Element("Er", 167.3, 68, None, None)
+Tm = Element("Tm", 168.9, 69, None, None)
+Yb = Element("Yb", 173.1, 70, None, None)
+Lu = Element("Lu", 175.0, 71, None, None)
+Hf = Element("Hf", 178.5, 72, None, None)
+Ta = Element("Ta", 180.9, 73, None, None)
+W = Element("W", 183.8, 74, None, 0.133)
+Re = Element("Re", 186.2, 75, None, None)
+Os = Element("Os", 190.2, 76, None, None)
+Ir = Element("Ir", 192.2, 77, None, None)
+Pt = Element("Pt", 195.1, 78, None, 0.133)
+Au = Element("Au", 197.0, 79, None, 0.129)
+Hg = Element("Hg", 200.6, 80, None, 0.138)
+Tl = Element("Tl", 204.4, 81, None, None)
+Pb = Element("Pb", 207.2, 82, None, 0.159)
+Bi = Element("Bi", 209.0, 83, -3, None)
+Po = Element("Po", 209, 84, -2, None)
+At = Element("At", 210, 85, -1, None)
+Rn = Element("Rn", 222, 86, 0, None)
+Fr = Element("Fr", 223, 87, 1, None)
+Ra = Element("Ra", 226, 88, 2, None)
+Ac = Element("Ac", 227, 89, None, None)
+Th = Element("Th", 232.0, 90, None, None)
+Pa = Element("Pa", 231.0, 91, None, None)
+U = Element("U", 238.0, 92, None, 0.115)
+Np = Element("Np", 237, 93, None, None)
+Pu = Element("Pu", 244, 94, None, None)
+Am = Element("Am", 243, 95, None, None)
+Cm = Element("Cm", 247, 96, None, None)
+Bk = Element("Bk", 247, 97, None, None)
+Cf = Element("Cf", 251, 98, None, None)
+Es = Element("Es", 252, 99, None, None)
+Fm = Element("Fm", 257, 100, None, None)
+Md = Element("Md", 258, 101, None, None)
+No = Element("No", 259, 102, None, None)
+Lr = Element("Lr", 262, 103, None, None)
+Rf = Element("Rf", 267, 104, None, None)
+Db = Element("Db", 270, 105, None, None)
+Sg = Element("Sg", 271, 106, None, None)
+Bh = Element("Bh", 270, 107, None, None)
+Hs = Element("Hs", 277, 108, None, None)
+Mt = Element("Mt", 276, 109, None, None)
+Ds = Element("Ds", 281, 110, None, None)
+Rg = Element("Rg", 282, 111, None, None)
+Cn = Element("Cn", 285, 112, None, None)
+Nh = Element("Nh", 285, 113, None, None)
+Fl = Element("Fl", 289, 114, None, None)
+Mc = Element("Mc", 288, 115, None, None)
+Lv = Element("Lv", 293, 116, None, None)
+Ts = Element("Ts", 294, 117, -1, None)
+Og = Element("Og", 294, 118, 0, None)
 
 # Declare polyatomics
 CH3CO2 = Polyatomic(C*H*H*H*C*O*O, -1)
@@ -1351,8 +1403,8 @@ N3 = Polyatomic(N*N*N, -1)
 BiO3 = Polyatomic(Bi*O*O*O, -1)
 HCO3 = Polyatomic(H*C*O*O*O, -1)#
 HSO4 = Polyatomic(H*S*O*O*O*O, -1)
-BrO3 = Polyatomic(Br*O*O*O*O, -1)
-ClO4 = Polyatomic(Cl*O*O*O, -1)
+BrO3 = Polyatomic(Br*O*O*O, -1)
+ClO4 = Polyatomic(Cl*O*O*O*O, -1)
 ClO3 = Polyatomic(Cl*O*O*O, -1)
 ClO2 = Polyatomic(Cl*O*O, -1)
 ClO = Polyatomic(Cl*O, -1)
@@ -1365,7 +1417,7 @@ OH = Polyatomic(O*H, -1)
 IO3 = Polyatomic(I*O*O*O, -1)
 C3H5O3 = Polyatomic((C*3)*(H*5)*(O*3), -1)
 MnO3 = Polyatomic(Mn*O*O*O, -1)
-MnO4 = Polyatomic(Mn*O*O*O, -1)
+MnO4 = Polyatomic(Mn*O*O*O*O, -1)
 PO3 = Polyatomic(P*O*O*O, -1)
 C7H5O3 = Polyatomic((C*7)*(H*5)*(O*3), -1)
 C18H35O2 = Polyatomic((C*18)*(H*35)*(O*2), -1)
@@ -1387,7 +1439,7 @@ SnO3 = Polyatomic(Sn*O*O*O, -2)
 SeO4 = Polyatomic(Se*O*O*O*O, -2)
 C4H6O4 = Polyatomic((C*4)*(H*6)*(O*4), -2)
 SO4 = Polyatomic(S*O*O*O*O, -2)
-SO3 = Polyatomic(S*O*O*O*O, -2)
+SO3 = Polyatomic(S*O*O*O, -2)
 C4H4O6 = Polyatomic((C*4)*(H*4)*(O*6), -2)
 TeO4 = Polyatomic(Te*O*O*O*O, -2)
 #SCN = Polyatomic(S*C*N, -2)
