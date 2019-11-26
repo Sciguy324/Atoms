@@ -13,6 +13,28 @@ def find_gcd(l):
         x = gcd(x, l[i])
     return x
 
+def conv_unit(x, unit1, unit2):
+    """Utility function for pressure unit conversion"""
+    units = {"atm": 1,
+             "kPa": 101.3,
+             "in Hg": 29.92,
+             "mm Hg": 760,
+             "torr": 760,
+             "psi": 14.69,
+             "Pa": 1.013e5
+             }
+    if unit1 not in units:
+        raise ValueError("'{}' not defined in unit conversion dictionary.  Available units are: {}".format(unit1, ("".join([i+", " for i, j in units.items()])[:-2])))
+    elif unit2 not in units:
+        raise ValueError("'{}' not defined in unit conversion dictionary.  Available units are: {}".format(unit2, ("".join([i+", " for i, j in units.items()])[:-2])))
+    else:
+        return x / units[unit1] * units[unit2]
+
+def unit_all(x, unit):
+    """Utility function for performing all pressure unit conversions"""
+    for i in ["atm", "kPa", "in Hg", "mm Hg", "torr", "psi", "Pa"]:
+        print(conv_unit(x, unit, i))
+
 def docs(search=None):
     import sys, inspect
     for i, j in inspect.getmembers(sys.modules[__name__]):
@@ -148,6 +170,124 @@ class Element:
     def atoms_to_grams(self, atoms):
         """Converts atoms of an element to grams"""
         return self.moles_to_grams(Element.atoms_to_moles(atoms))
+
+    def volume_to_moles(self, volume, temperature=273.15, pressure=1):
+        """Converts volume to moles, assuming that the substance is a gas"""
+        return volume * pressure / (temperature * R)
+
+    def vol2mol(self, volume, temperature=273.15, pressure=1):
+        """Alias for volume_to_moles"""
+        return self.volume_to_moles(volume, temperature, pressure)
+
+    def moles_to_volume(self, moles, temperature=273.15, pressure=1):
+        """Converts moles to volume, assuming that the substancee is a gas.  Default temperature and pressure are at gas STP"""
+        return moles * R * temperature / pressure
+
+    def mol2vol(self, moles, temperature=273.15, pressure=1):
+        """Alias for moles_to_volume"""
+        return self.moles_to_volume(moles, temperature, pressure)
+
+    # PV=nRT functions.  Not intended for user use
+    @staticmethod
+    def vnt_to_pressure(volume, moles, temperature):
+        """Applies PV=nRT to obtain pressure"""
+        return moles * R * temperature / volume
+    
+    @staticmethod
+    def pnt_to_volume(pressure, moles, temperature):
+        """Applies PV=nRT to obtain volume"""
+        return moles * R * temperature / pressure
+    
+    @staticmethod
+    def pvt_to_moles(pressure, volume, temperature):
+        """Applies PV=nRT to obtain moles"""
+        return pressure * volume / (R * temperature)
+    
+    @staticmethod
+    def pvn_to_temp(pressure, volume, moles):
+        """Applies PV=nRT to obtain temperature"""
+        return pressure * volume / (moles * R)
+
+    def _pvnrt(self, pressure, volume, moles, temperature):
+        """Applies PV=nRT to determine the unknown variable, given all other information is known"""
+        # Check if there are too many unknowns
+        if sum([i is None for i in [pressure, volume, moles, temperature]]) > 1:
+            raise ValueError("Too many unknowns")
+
+        # Check if all information is known, and apply PV=nRT as a verification
+        if sum([i is None for i in [pressure, volume, moles, temperature]]) == 0:
+            return round(pressure*volume, 4) == round(moles*R*temperature, 4)
+
+        # Apply PV=nRT for each unknown case
+        args = [pressure, volume, moles, temperature]
+        function = ([Element.vnt_to_pressure,
+                     Element.pnt_to_volume,
+                     Element.pvt_to_moles,
+                     Element.pvn_to_temp])[args.index(None)]
+
+        args.remove(None)
+        
+        return function(args[0], args[1], args[2])
+    
+    def pvnrt(self):
+        """Wrapper for _pvnrt"""            
+        args = [0,0,0,0]
+        
+        print("Note: Enter 'None' without units to indicate the unknown.  Values are assumed to be in atm, L, moles, and K respectively.  For other units, append the unit onto the end of the entry, separated by a space.")
+        for i, j in enumerate(["Pressure", "Volume", "Moles", "Temperature"]):
+            user = (input(j + ": ")).split(" ")
+
+            # Check for unknown indicator
+            if user[0] == "None":
+                args[i] = None
+                unknown_units = ("atm", "L", "mol", "K")[i]
+                continue
+
+            # Check for mercury-based units and correct
+            if len(user) == 3:
+                if user[2] == "Hg":
+                    user[1] += " Hg"
+                    user.pop(2)
+                
+            if len(user) == 2:
+                # Check for pressure units
+                if i == 0:
+                    args[i] = conv_unit(floatify(user[0]), user[1], "atm")
+                # Check for volume units
+                elif i == 1:
+                    try:
+                        args[i] = floatify(user[0]) * ({"mL": 0.001, "milliliters": 0.001, "Milliliters": 0.001, "L": 1, "liters": 1, "Liters": 1})[user[1]]
+                    except KeyError:
+                        raise ValueError("Unrecognized unit {}".format(user[1]))
+                # Check for mass units
+                elif i == 2:
+                    if user[1] in ["m", "mols", "moles", "mol", "mole"]:
+                        args[i] = floatify(user[0])
+                    elif user[1] in ["g", "grams", "gram"]:
+                        args[i] = self.grams_to_moles(floatify(user[0]))
+                    else:
+                        raise ValueError("Unrecognized unit {}".format(user[1]))
+                # Check for temperature units
+                elif i == 3:
+                    if user[1] in ["K", "kelvin", "Kelvin"]:
+                        args[i] = floatify(user[0])
+                    elif user[1] in ["C", "celsius", "Celsius"]:
+                        args[i] = floatify(user[0]) + 273.15
+                    elif user[1] in ["F", "fahrenheit", "Fahrenheit"]:
+                        args[i] = (floatify(user[0]) - 32) * 5 / 9
+                    else:
+                        raise ValueError("Unrecognized unit {}".format(user[1]))
+            elif len(user) > 2:
+                raise ValueError("Invalid argument {}".format(" ".join(user)))
+            else:
+                args[i] = float(user[0])
+
+        print("Result:")
+        print(self._pvnrt(args[0], args[1], args[2], args[3]), unknown_units)
+    
+    def gas_density(self, temperature=273.15, pressure=1):
+        """Calculates the density of the substance, assuming that it is a gas.  Default temperature and pressure are at gas STP"""
+        return self.molar_mass() * pressure / (R * temperature)
 
     def heat(self, mass, temperature_change):
         """Determines the energy change after enacting a temperature change on a mass of an element"""
@@ -334,6 +474,34 @@ class Molecule:
         element will be isolated and returned instead."""
         return self.moles_to_grams(self.molecules_to_moles(molecules), element)
 
+    def volume_to_moles(self, volume, temperature=273.15, pressure=1):
+        """Converts volume to moles, assuming that the molecule is a gas"""
+        return volume * pressure / (temperature * R)
+
+    def vol2mol(self, volume, temperature=273.15, pressure=1):
+        """Alias for volume_to_moles"""
+        return self.volume_to_moles(volume, temperature, pressure)
+
+    def moles_to_volume(self, moles, temperature=273.15, pressure=1):
+        """Converts moles to volume, assuming that the molecule is a gas.  Default temperature and pressure are at gas STP"""
+        return moles * R * temperature / pressure
+
+    def mol2vol(self, moles, temperature=273.15, pressure=1):
+        """Alias for moles_to_volume"""
+        return self.moles_to_volume(moles, temperature, pressure)
+
+    def _pvnrt(self, pressure, volume, moles, temperature):
+        """Applies PV=nRT to solve for an unknown"""
+        return Element._pvnrt(self, pressure, volume, moles, temperature)
+
+    def pvnrt(self):
+        """Wrapper for _pvnrt"""
+        return Element.pvnrt(self)
+
+    def gas_density(self, temperature=273.15, pressure=1):
+        """Calculates the density of the molecule, assuming that it is a gas.  Default temperature and pressure are at gas STP"""
+        return self.molar_mass() * pressure / (R * temperature)
+
     def get_atoms(self):
         """Returns a dictionary of element-count pairs in the polyatomic"""
         result = {}
@@ -474,8 +642,13 @@ class Molecule:
         result = {}
         current_charge = self.charge
 
+        # Check for special cases otherwise not covered by the rules
+        if self == ((C*3)*(H*8)):
+            return {H: 0, C: 0}
+        
         # Apply rules for elemental atoms and singular ions
         ion_list = [i for i, j in self.parts.items()]
+        
         #print(ion_list)
         if len(ion_list) == 1:
             if self.charge == 0:
@@ -962,29 +1135,34 @@ class Combination:
     def _assign_oxidation(self):
         """Assigns oxidation numbers to the ions in the combination"""
         stage1 = []
+        # Set up component-charge dictionary, sorted by molar mass
         parts = list(dict(self.parts).items())
         parts.sort(key=lambda x: x[0].molar_mass())
         #print(parts)
-        
+
+        # Assign oxidation states to the components
         for i, j in parts:
             copy = i.copy()
             copy = j * copy
             stage1.append(copy._assign_oxidation())
-
+        
         stage2 = []
         stage2.append([])
-        
+
+        # Condense data by eliminating repeats
         for i in stage1:
             for j, k in i.items():
                 for m, n in enumerate(stage2):
                     if [j, k] not in n:
                         stage2[m].append([j, k])
 
+        # Convert to a list of dictionaries.  List format is present to allow same
+        # atoms to have multiple oxiditation states on one side
         stage3 = []
         for i, j in enumerate(stage2):
             stage3.append({})
             stage3[i] = dict(j)
-
+        
         return stage3
                 
         
@@ -1074,18 +1252,20 @@ class Reaction:
         right_charge = 0
         for i, j in self.right.parts.items():
             right_charge += j * i.charge
-
+        
         # Check for noninteger charges
         if round(left_charge) != left_charge:
+            print("Warning: Noninteger charge detected")
             return False
         if round(right_charge) != right_charge:
+            print("Warning: Noninteger charge detected")
             return False
-
+        
         for i in self.left._assign_oxidation():
             for j, k in i.items():
                 if round(k) != k:
                     return False
-
+        
         for i in self.right._assign_oxidation():
             for j, k in i.items():
                 if round(k) != k:
@@ -1093,12 +1273,15 @@ class Reaction:
 
         return left_charge == right_charge
 
-    def solve(self, limit=10):
+    def solve(self, limit=10, ignore_charge=False):
         """Auto balances a chemcial reaction.  Will continue until reaching the maximum number of a molecule allowed."""
         # First check if the two sides have the same elements
         if not self.left.compare(self.right):
             raise ValueError("Reaction impossible to balance, elements do not match:\nLeft: {}\nRight:{}".format([i for i, j in self.left.get_atoms().items()],
                                                                                                                  [i for i, j in self.right.get_atoms().items()]))
+        # Variables to track what type of verification cause problems
+        element_imbalance = 0
+        charge_imbalance = 0
 
         # Iterate through possible combinations, assuming the reaction is solvable
         if limit > 20:
@@ -1134,9 +1317,36 @@ class Reaction:
                 new_right.parts = dict(zip([k[0] for k in new_right.parts.items()], j))
 
                 possible = Reaction(new_left, new_right)
-                if possible.verify() and possible.verify_charge():
-                    return possible
+                if possible.verify():
+                    if (ignore_charge or possible.verify_charge()):
+                        #print("Element Check Fails:", element_imbalance)
+                        #print("Charge Check Fails:", charge_imbalance)
+                        return possible
+                    else:
+                        # Save a backup in case the solution was actually valid, and no other solutions were found.
+                        backup = possible.copy()
+                        charge_imbalance += 1
+                else:
+                    element_imbalance += 1
+        
 
+        print("Element Check Fails:", element_imbalance)
+        print("Charge Check Fails:", charge_imbalance)
+
+        # If only one charge imbalance was detected, ask if that was the solution the user was looking for
+        if charge_imbalance == 1:
+            user = input("""No solutions were found within the limit, but a charge imbalance was detected in the closest solution: {}.
+Take this as the solution? (Y/N): """.format(backup))
+            if user.lower() == "y":
+                return backup
+
+        # If multiple charge imbalances were detected, ask the user if they want to re-solve, this time ignoring charges
+        elif charge_imbalance > 1:
+            user = input("""No solutions were found within the limit, but charge imbalances were detected.
+Run the solver again without regard to charges? (Y/N): """)
+            if user.lower() == "y":
+                possible = self.solve(limit=limit, ignore_charge=True)
+        
         raise TimeoutError("""Unable to solve the reaction within the specified limit ({}),
 Consider raising the limit by using .solve(limit=NEW_LIMIT_HERE)""".format(limit))
 
@@ -1268,10 +1478,6 @@ Consider raising the limit by using .solve(limit=NEW_LIMIT_HERE)""".format(limit
                 print(j, "-", k)
         
 
-    def solve_redox(self):
-        """"""
-        pass
-
 # Declare elements
 H = Element("H", 1.008, 1, 1, None)
 He = Element("He", 4.003, 2, 0, 5.19)
@@ -1392,6 +1598,10 @@ Lv = Element("Lv", 293, 116, None, None)
 Ts = Element("Ts", 294, 117, -1, None)
 Og = Element("Og", 294, 118, 0, None)
 
+# Declare unknown element/molecule
+X = Element("???", 0, 0, None, None)
+X2 = X*X
+
 # Declare polyatomics
 CH3CO2 = Polyatomic(C*H*H*H*C*O*O, -1)
 C2H3O2 = Polyatomic(C*C*H*H*H*O*O, -1)
@@ -1473,6 +1683,8 @@ strong_bases = [Li*OH, Na*OH, K*OH, Ca*(2*OH), Ba*(2*OH), Sr*(2*OH)]
 
 en = Charge(-1)
 ep = Charge(1)
+
+R = 0.082058 # Ideal gas constant in L atm / (mol K)
 
 print("Use the function 'docs()' to print out all docstrings associated with all classes and their member functions")
 print("An optional argument may be entered to narrow the results to a single class")
