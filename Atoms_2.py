@@ -649,7 +649,6 @@ class Molecule:
         # Apply rules for elemental atoms and singular ions
         ion_list = [i for i, j in self.parts.items()]
         
-        #print(ion_list)
         if len(ion_list) == 1:
             if self.charge == 0:
                 return {ion_list[0]: 0}
@@ -1138,7 +1137,6 @@ class Combination:
         # Set up component-charge dictionary, sorted by molar mass
         parts = list(dict(self.parts).items())
         parts.sort(key=lambda x: x[0].molar_mass())
-        #print(parts)
 
         # Assign oxidation states to the components
         for i, j in parts:
@@ -1299,7 +1297,6 @@ class Reaction:
                     even_left = False
                     break
             
-            #print("Attempting on left:", i)
             new_left = self.left.copy()
             # Place test values into left-hand side of reaction
             new_left.parts = dict(zip([j[0] for j in new_left.parts.items()], i))
@@ -1319,8 +1316,9 @@ class Reaction:
                 possible = Reaction(new_left, new_right)
                 if possible.verify():
                     if (ignore_charge or possible.verify_charge()):
-                        #print("Element Check Fails:", element_imbalance)
-                        #print("Charge Check Fails:", charge_imbalance)
+                        if DEBUG:
+                            print("Element Check Fails:", element_imbalance)
+                            print("Charge Check Fails:", charge_imbalance)
                         return possible
                     else:
                         # Save a backup in case the solution was actually valid, and no other solutions were found.
