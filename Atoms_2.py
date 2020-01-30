@@ -1,5 +1,12 @@
 import itertools
 from math import gcd
+try:
+    from sympy.parsing.sympy_parser import parse_expr
+    from sympy import solve as solve_expr
+    INITIALIZED = True
+except ModuleNotFoundError:
+    print("WARNING: Unable to import 'SymPy' module.  Most algebra-solving functions will be unavailable.")
+    INITIALIZED = False
 
 DEBUG = False
 do_debug = False
@@ -50,6 +57,72 @@ def docs(search=None):
     if search is None: print("\nExample of syntax:\nMg*ep*ep + Ba*(2*NO3) > Ba*ep*ep + Mg*(2*NO3)\nBecomes:\n[Mg]²⁺ + Ba(NO₃)₂ -> [Ba]²⁺ + Mg(NO₃)₂")
 
 
+class Solver:
+    """Utility/wrapping class used when it is necessary to solve for a specific variable"""
+
+    def __init__(self, variables: list, equation: str, hints=None):
+        self.variables = variables
+        
+        # Check equation usability
+        if '=' in equation:
+            raise ValueError("Equation must be set up such that it equals zero!  No equal sign should be necessary")
+        else:
+            self.equation = equation
+            
+        if hints is None:
+            # Default hint: Nothing
+            self.hints = [""] * len(variables)
+        else:
+            # Hint exists, check for validity
+            if len(hints) == len(variables):
+                # Hint list is the correct length
+                self.hints = [" ({})".format(i) for i in hints]
+            else:
+                # Hint list is the incorrect length
+                raise ValueError("Dimension mismatch between 'variables' list and 'hint' list.")
+
+    def __repr__(self):
+        """Return a string representation of the equation"""
+        return self.equation + ' = 0'
+
+    def _run(self, values: dict):
+        """Compute the equation using a set of inputs"""
+        if not INITIALIZED:
+            raise ModuleNotFoundError("Cannot run solver without SymPy module!")
+        # Substitute the values into the equation
+        eq = self.equation
+        for i, j in values.items():
+            eq = eq.replace(i, str(j))
+        print(eq)
+
+        # Parse and solve equation
+        return solve_expr(parse_expr(eq))[0]
+
+    def run(self):
+        """Wrapper for the '_run' function"""
+        values = []
+        unknown = ''
+        unknown_hint = ''
+        unknown_exists = False
+        print("Use 'x' to indicate the SINGULAR unknown variable")
+        # Ask user to input values for each variable
+        for i, j in zip(self.variables, self.hints):
+            user_input = input("{}{}: ".format(i, j))
+            values.append(user_input)
+            if user_input == 'x':
+                # Register the unknown variable
+                unknown = i
+                unknown_hint = j
+                unknown_exists = True
+                
+        if unknown_exists:
+            # There was an unknown, proceed to solving
+            print("{}{} = {}".format(unknown, unknown_hint, self._run(dict(zip(self.variables, values)))))
+        else:
+            # I'm sorry Dave, but I'm afraid I can't do that
+            raise ValueError("No unknown variable provided")
+    
+
 class State:
     """Utility class for setting the state of a molecule"""
 
@@ -61,7 +134,11 @@ class State:
 
     def __mul__(self, x):
         """Multiply by element/molecule/polyatomic to set state"""
-        if type(x) in [Molecule, Polyatomic]:
+        if type(x) == Element:
+            result = (1*x)
+            result.state = self
+            return result
+        elif type(x) in [Molecule, Polyatomic]:
             result = x.copy()
             result.state = self
             return result
@@ -105,6 +182,7 @@ class Charge:
             return result
 
         else:
+            # Invalid operation
             raise TypeError("Unsupported operation between {} and {}".format(type(self), type(x)))
     
     def __rmul__(self, x):
@@ -342,6 +420,9 @@ class Element:
 
         elif type(x) == Charge:
             return Molecule({self: 1}, count=1, charge=x.charge)
+
+        elif type(x) == State:
+            return x * self
         
         else:
             # Invalid operation
@@ -801,9 +882,13 @@ class Molecule:
             # n * Molecule -> n amount of Molecule
             return Molecule(dict(self.parts), self.count * x, self.charge)
         elif type(x) == Charge:
+            # Molecule * charge
             result = self.copy()
             result.charge += x.charge
             return result
+        elif type(x) == State:
+            # Molecule * State
+            return x * self
         else:
             # Invalid operation
             raise TypeError("Unsupported operation between {} and {}".format(type(self), type(x)))
@@ -1025,7 +1110,9 @@ class Polyatomic:
             result = self.copy()
             result.count *= x
             return result
-            
+        elif type(x) == State:
+            # Polyatomic * State
+            return x * self
         else:
             # Invalid operation
             raise TypeError("Unsupported operation between {} and {}".format(type(self), type(x)))
@@ -1063,6 +1150,9 @@ class Polyatomic:
 
 class Combination:
     """Class representing a combination of elements/molecules"""
+    raoult_solver = Solver(['Pₛₒₗₙ', 'Pₛₒₗᵥ', 'Molesₛₒₗᵥ', 'Molesₛₒₗᵤₜₑ'],
+                           'Pₛₒₗᵥ * Molesₛₒₗᵥ / (Molesₛₒₗᵥ + Molesₛₒₗᵤₜₑ) - Pₛₒₗₙ',
+                           hints=['atm', 'atm', '', ''])
 
     def __init__(self, molecule_dict):
         """Combinations are declared through the use of '+' between components"""
@@ -1254,6 +1344,21 @@ class Combination:
                 result += mass * sp_heat * (final_t - temp_i)
 
         return result / (-1 * mass_u * (final_t - temp_i_u))
+
+    def raoult(self):
+        if len(self.parts) != 2:
+            raise ValueError("Invalid number of molecules present in combination, this case has not been coded for!")
+        # First molecule is the dissolved one
+        if list(self.parts.items())[0][0].state == aq:
+            Combination.raoult_solver.run()
+        # Second molecule is the dissolved one
+        elif list(self.parts.items())[1][0].state == aq:
+            pass
+        else:
+            raise ValueError("Dissolved molecules must be denoted with an 'aq' state (multiply molecule by aq)")
+        
+            
+    
 
 class Reaction:
     """Class representing chemical reactions, composed of combinations"""
@@ -1711,6 +1816,17 @@ PH4 = Polyatomic(P*H*H*H*H, 1)
 CHO = Polyatomic(C*H*O, 1)
 C6H5 = Polyatomic((C*6)*(H*5), 1)
 
+# Declare charges utility
+en = Charge(-1)
+ep = Charge(1)
+
+# Declare states utility
+s = State("s")
+l = State("l")
+g = State("g")
+aq = State("aq")
+
+# Declare catalogues of acids/bases
 acids = [H*Cl, H*Br, H*I, H*ClO4, H*NO3, H*H*SO4,
          H*C2H3O2, H*C9H7O4, H*H*CO3, CHO*OH, H*CN, H*F, H*H*S,
          H*ClO, H*NO2, H*H*C2O4, C6H5*OH, H*H*H*PO4, H*H*SO3]
@@ -1721,17 +1837,27 @@ bases = [Li*OH, Na*OH, K*OH, Ca*(2*OH), Ba*(2*OH), Sr*(2*OH),
 strong_acids = [H*Cl, H*Br, H*I, H*ClO4, H*NO3, H*H*SO4]
 strong_bases = [Li*OH, Na*OH, K*OH, Ca*(2*OH), Ba*(2*OH), Sr*(2*OH)]
 
-# Charges
-en = Charge(-1)
-ep = Charge(1)
+# Declare melting point data catalogues
+# Heats of fusion are in kJ/mol
+heat_of_fusion = {Al*s: 0, Al*(Cl*3)*s: -704.2, Al*Al*O*O*O*s: -1675.7, Al*(OH*3)*s: -1277.0,
+                  Ba*s: 0, Ba*Cl*Cl*s: -858.6, Ba*CO3*s: -1219.0, Ba*O*s: -553.5, Ba*OH*OH*s: -946.0, Ba*SO4*s: -1473.2,
+                  Be*s: 0, Be*O*s: -599.0, Be*OH*OH: -902.5,
+                  Br*g: 111.9, Br*Br*l: 0, Br*Br*g: 30.9, Br*Br*aq: -3.0, Br*en*aq: -121.0, Br*(F*3)*g: -255.6, H*Br*g: -36.3,
+                  Cd*s: 0, Cd*O*s: -258.0, Cd*OH*OH*s: -561.0, Cd*S*s: -162.0, Cd*SO4*s: -935.0}
+melting_point = {}
 
-# States
-s = State("s")
-l = State("l")
-g = State("g")
-aq = State("aq")
+# Declare boiling point data catalogues
+heat_of_vaporization = {}
+boiling_point = {}
 
 R = 0.082058 # Ideal gas constant in L atm / (mol K)
+
+# Declare some basic solvers
+raoult_solver = Solver(['Pₛₒₗₙ', 'Pₛₒₗᵥ', 'Molesₛₒₗᵥ', 'Molesₛₒₗᵤₜₑ'],
+                        'Pₛₒₗᵥ * Molesₛₒₗᵥ / (Molesₛₒₗᵥ + Molesₛₒₗᵤₜₑ) - Pₛₒₗₙ',
+                        hints=['atm', 'atm', '', ''])
+def raoult():
+    raoult_solver.run()
 
 print("Use the function 'docs()' to print out all docstrings associated with all classes and their member functions")
 print("An optional argument may be entered to narrow the results to a single class")
