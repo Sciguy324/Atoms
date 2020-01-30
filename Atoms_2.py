@@ -49,6 +49,30 @@ def docs(search=None):
             print("")
     if search is None: print("\nExample of syntax:\nMg*ep*ep + Ba*(2*NO3) > Ba*ep*ep + Mg*(2*NO3)\nBecomes:\n[Mg]²⁺ + Ba(NO₃)₂ -> [Ba]²⁺ + Mg(NO₃)₂")
 
+
+class State:
+    """Utility class for setting the state of a molecule"""
+
+    def __init__(self, symbol):
+        self.symbol = symbol
+
+    def __repr__(self):
+        return "({})".format(self.symbol)
+
+    def __mul__(self, x):
+        """Multiply by element/molecule/polyatomic to set state"""
+        if type(x) in [Molecule, Polyatomic]:
+            result = x.copy()
+            result.state = self
+            return result
+        else:
+            raise TypeError("Unsupported operation between {} and {}".format(type(self), type(x)))
+
+    def __rmul__(self, x):
+        """Reverse multiplication"""
+        return self.__mul__(x)
+        
+
 class Charge:
     """Utility class for ionizing molecules."""
 
@@ -101,6 +125,7 @@ class Element:
         self.neutrons = round(molar_mass) - atomic_number
         self.ox = oxidation
         self.specific_heat = specific_heat
+        self.state = None
         Element.elements[symbol] = self
 
     def molar_mass(self):
@@ -351,12 +376,13 @@ class Element:
 class Molecule:
     """Class for molecules"""
     
-    def __init__(self, parts_dict, count=1, charge=0):
+    def __init__(self, parts_dict, count=1, charge=0, state=None):
         self.parts = parts_dict
         self.count = count
         self.mol_mass = count * sum([j*(i.molar_mass()) for i, j in parts_dict.items()])
         self.count = count
         self.charge = charge
+        self.state = state
 
     def __hash__(self):
         return hash((tuple(self.get_atoms().items()), self.count))
@@ -399,11 +425,14 @@ class Molecule:
     def symbol(self):
         """Returns the symbol of the element"""
         result = ""
+
         if self.charge not in [0, None]:
             charge = self.charge
             result += "["
+
         if self.count > 1:
             result += str(self.count)
+
         for i, j in self.parts.items():
             if type(i) == Element:
                 result += i.symbol()
@@ -414,6 +443,7 @@ class Molecule:
                     result += "(" + i.symbol() + ")" + str(j).translate(sub)
                 else:
                     result += i.symbol()
+
         if self.charge not in [0, None]:
             result += "]"
             if charge > 0:
@@ -424,10 +454,15 @@ class Molecule:
                 if charge < -1:
                     result += str(abs(charge)).translate(sup)
                 result += "-".translate(sup)
+
+        if self.state is not None:
+            result += str(self.state)
+            
         return result
 
     def copy(self):
-        return Molecule(dict(self.parts), self.count, self.charge)
+        """Returns a new instance of the molecule identical to self."""
+        return Molecule(dict(self.parts), count=self.count, charge=self.charge, state=self.state)
 
     def grams_to_moles(self, grams, element=None):
         """Converts grams of a molecule to moles.  If an element is specified, the number of
@@ -810,7 +845,7 @@ class Polyatomic:
 
     polyatomic_list = []
 
-    def __init__(self, molec, oxidation, count=1):
+    def __init__(self, molec, oxidation, count=1, state=None):
         """Polyatomics are called by entering a single term.  For example, C₂H₃O₂⁻ is referenced as C2H3O2"""
         if type(molec) == dict:
             self.parts = dict(molec)
@@ -819,6 +854,7 @@ class Polyatomic:
         self.mol_mass = sum([j*i.molar_mass() for i, j in self.parts.items()])
         self.ox = oxidation
         self.count = count
+        self.state = state
         self.sym = self.symbol()
         self.charge = oxidation
         if self not in Polyatomic.polyatomic_list:
@@ -868,8 +904,10 @@ class Polyatomic:
     def symbol(self):
         """Returns the symbol of the element"""
         result = ""
+
         if self.count > 1:
             result += str(self.count)
+
         for i, j in self.parts.items():
             if type(i) == Element:
                 result += i.symbol()
@@ -880,6 +918,10 @@ class Polyatomic:
                     result += "(" + i.symbol() + ")" + str(j).translate(sub)
                 else:
                     result += i.symbol()
+
+        if self.state is not None:
+            result += str(self.state)
+            
         return result
 
     def atomize(self):
@@ -920,7 +962,7 @@ class Polyatomic:
 
     def copy(self):
         """Returns a new copy of the polyatomic"""
-        return Polyatomic(dict(self.parts), self.oxidation(), self.count)
+        return Polyatomic(dict(self.parts), self.oxidation(), count=self.count, state=self.state)
 
     def get_atoms(self):
         """Returns a dictionary of element-count pairs in the polyatomic"""
@@ -1679,8 +1721,15 @@ bases = [Li*OH, Na*OH, K*OH, Ca*(2*OH), Ba*(2*OH), Sr*(2*OH),
 strong_acids = [H*Cl, H*Br, H*I, H*ClO4, H*NO3, H*H*SO4]
 strong_bases = [Li*OH, Na*OH, K*OH, Ca*(2*OH), Ba*(2*OH), Sr*(2*OH)]
 
+# Charges
 en = Charge(-1)
 ep = Charge(1)
+
+# States
+s = State("s")
+l = State("l")
+g = State("g")
+aq = State("aq")
 
 R = 0.082058 # Ideal gas constant in L atm / (mol K)
 
