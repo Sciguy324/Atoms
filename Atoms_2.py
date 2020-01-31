@@ -109,7 +109,7 @@ class Solver:
         for i, j in zip(self.variables, self.hints):
             user_input = input("{}{}: ".format(i, j))
             values.append(user_input)
-            if user_input == 'x':
+            if 'x' in user_input:
                 # Register the unknown variable
                 unknown = i
                 unknown_hint = j
@@ -1843,7 +1843,10 @@ heat_of_fusion = {Al*s: 0, Al*(Cl*3)*s: -704.2, Al*Al*O*O*O*s: -1675.7, Al*(OH*3
                   Ba*s: 0, Ba*Cl*Cl*s: -858.6, Ba*CO3*s: -1219.0, Ba*O*s: -553.5, Ba*OH*OH*s: -946.0, Ba*SO4*s: -1473.2,
                   Be*s: 0, Be*O*s: -599.0, Be*OH*OH: -902.5,
                   Br*g: 111.9, Br*Br*l: 0, Br*Br*g: 30.9, Br*Br*aq: -3.0, Br*en*aq: -121.0, Br*(F*3)*g: -255.6, H*Br*g: -36.3,
-                  Cd*s: 0, Cd*O*s: -258.0, Cd*OH*OH*s: -561.0, Cd*S*s: -162.0, Cd*SO4*s: -935.0}
+                  Cd*s: 0, Cd*O*s: -258.0, Cd*OH*OH*s: -561.0, Cd*S*s: -162.0, Cd*SO4*s: -935.0,
+                  Ca*s: 0, Ca*g: 178.2, Ca*ep*ep*g: 1925.9, Ca*C*C*s: -59.8, Ca*CO3*s: -1206.9, Ca*Cl*Cl*s: -795.8,
+                  Ca*F*F*s: -1219.6, Ca*H*H: -186.2, Ca*O*s, Ca*S*s: -482.4, Ca*OH*OH*s: -986.1, Ca*OH*OH*aq: -1002.8,
+                  (Ca*3)*(PO4*2)*s: -4126.0, Ca*SO4*s: -1434.1, Ca*Si*O*O*O*s: -1630.0}
 melting_point = {}
 
 # Declare boiling point data catalogues
@@ -1856,6 +1859,15 @@ R = 0.082058 # Ideal gas constant in L atm / (mol K)
 raoult_solver = Solver(['Pₛₒₗₙ', 'Pₛₒₗᵥ', 'Molesₛₒₗᵥ', 'Molesₛₒₗᵤₜₑ'],
                         'Pₛₒₗᵥ * Molesₛₒₗᵥ / (Molesₛₒₗᵥ + Molesₛₒₗᵤₜₑ) - Pₛₒₗₙ',
                         hints=['atm', 'atm', '', ''])
+
+freeze_depress = Solver(['ΔT_f', 'Molesₛₒₗᵤₜₑ', 'Massₛₒₗᵥ', 'i', 'K_f'],
+                        'Molesₛₒₗᵤₜₑ / Massₛₒₗᵥ * i * K_f - ΔT_f',
+                        hints=['ᵒC', 'moles', 'kg', '', 'ᵒC/m'])
+
+boiling_elevate = Solver(['ΔT_b', 'Molesₛₒₗᵤₜₑ', 'Massₛₒₗᵥ', 'i', 'K_b'],
+                         'Molesₛₒₗᵤₜₑ / Massₛₒₗᵥ * i * K_b - ΔT_b',
+                         hints=['ᵒC', 'moles', 'kg', '', 'ᵒC/m'])
+
 def raoult():
     raoult_solver.run()
 
