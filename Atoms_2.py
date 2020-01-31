@@ -52,9 +52,9 @@ def docs(search=None):
             print(i, "-", j.__doc__)
             for k, m in inspect.getmembers(j):
                 if inspect.isfunction(m):
-                    print("\t", k, ":", m.__doc__, "\n")
+                    print("\t{}{}: {}\n".format(k, inspect.signature(m), m.__doc__))
             print("")
-    if search is None: print("\nExample of syntax:\nMg*ep*ep + Ba*(2*NO3) > Ba*ep*ep + Mg*(2*NO3)\nBecomes:\n[Mg]²⁺ + Ba(NO₃)₂ -> [Ba]²⁺ + Mg(NO₃)₂")
+    if search is None: print("\nExample of syntax:\n  Mg*ep*ep*aq + Ba*(2*NO3)*aq > Ba*ep*ep*aq + Mg*(2*NO3)*aq\nBecomes:\n", Mg*ep*ep*aq + Ba*(2*NO3)*aq > Ba*ep*ep*aq + Mg*(2*NO3)*aq)
 
 
 class Solver:
@@ -97,7 +97,7 @@ class Solver:
 
         # Parse and solve equation
         return solve_expr(parse_expr(eq))[0]
-
+    
     def run(self):
         """Wrapper for the '_run' function"""
         values = []
@@ -1838,20 +1838,20 @@ strong_acids = [H*Cl, H*Br, H*I, H*ClO4, H*NO3, H*H*SO4]
 strong_bases = [Li*OH, Na*OH, K*OH, Ca*(2*OH), Ba*(2*OH), Sr*(2*OH)]
 
 # Declare melting point data catalogues
-# Heats of fusion are in kJ/mol
-heat_of_fusion = {Al*s: 0, Al*(Cl*3)*s: -704.2, Al*Al*O*O*O*s: -1675.7, Al*(OH*3)*s: -1277.0,
-                  Ba*s: 0, Ba*Cl*Cl*s: -858.6, Ba*CO3*s: -1219.0, Ba*O*s: -553.5, Ba*OH*OH*s: -946.0, Ba*SO4*s: -1473.2,
-                  Be*s: 0, Be*O*s: -599.0, Be*OH*OH: -902.5,
-                  Br*g: 111.9, Br*Br*l: 0, Br*Br*g: 30.9, Br*Br*aq: -3.0, Br*en*aq: -121.0, Br*(F*3)*g: -255.6, H*Br*g: -36.3,
-                  Cd*s: 0, Cd*O*s: -258.0, Cd*OH*OH*s: -561.0, Cd*S*s: -162.0, Cd*SO4*s: -935.0,
-                  Ca*s: 0, Ca*g: 178.2, Ca*ep*ep*g: 1925.9, Ca*C*C*s: -59.8, Ca*CO3*s: -1206.9, Ca*Cl*Cl*s: -795.8,
-                  Ca*F*F*s: -1219.6, Ca*H*H: -186.2, Ca*O*s, Ca*S*s: -482.4, Ca*OH*OH*s: -986.1, Ca*OH*OH*aq: -1002.8,
-                  (Ca*3)*(PO4*2)*s: -4126.0, Ca*SO4*s: -1434.1, Ca*Si*O*O*O*s: -1630.0}
-melting_point = {}
+# Heats/enthalpy of fusion are in kJ/mol, melting points are in °C
+heat_of_fusion = {H*H*O: 6.007, (C*3)*(H*8)*O: 5.37, (C*3)*(H*6)*O: 5.69, (C*4)*(H*10)*O: 7.27,
+                  N*(H*3): 5.65, H*Cl: 1.992, C*O: 0.836, C*(Cl*4): 2.5, Na*Cl: 28.8, Ne: 0.33,
+                  O*2: 0.44, C*(H*4): 0.94, C*C*(H*6): 2.85, Cl*2: 6.4, C*(Cl*4): 2.67,
+                  (C*9)*(H*20): 19.3, Hg: 2.3, Na: 2.6, Al: 10.9}
+melting_point = {H*H*O: 0.0, (C*3)*(H*8)*O: -89.5, (C*3)*(H*6)*O: -94.8, (C*4)*(H*10)*O: -116.3,
+                 Ne: -249.15, O*2: -219.15, C*(H*4): -182.45, C*C*(H*6): -183.15, Cl*2: -100.95,
+                 C*(Cl*4): -23.15, (C*9)*(H*20): 79.85, Hg: -39.15, Na: 97.85, Al: 659.85}
 
 # Declare boiling point data catalogues
-heat_of_vaporization = {}
-boiling_point = {}
+heat_of_vaporization = {Ne: 1.8, O*2: 6.82, C*(H*4): 8.18, C*C*(H*6): 14.72, Cl*2: 20.41,
+                        C*(Cl*4): 30.0, H*H*O: 40.7, (C*9)*(H*20): 40.5, Hg: 58.6, Na: 98, Al: 284}
+boiling_point = {Ne: -246.15, O*2: -182.95, C*(H*4): -161.15, C*C*(H*6): -89.15, Cl*2: -34.15,
+                 C*(Cl*4): 76.85, H*H*O: 99.95, (C*9)*(H*20): 217.85, Hg: 356.85, Na: 884.85, Al: 2326.85}
 
 R = 0.082058 # Ideal gas constant in L atm / (mol K)
 
@@ -1862,11 +1862,11 @@ raoult_solver = Solver(['Pₛₒₗₙ', 'Pₛₒₗᵥ', 'Molesₛₒₗᵥ', '
 
 freeze_depress = Solver(['ΔT_f', 'Molesₛₒₗᵤₜₑ', 'Massₛₒₗᵥ', 'i', 'K_f'],
                         'Molesₛₒₗᵤₜₑ / Massₛₒₗᵥ * i * K_f - ΔT_f',
-                        hints=['ᵒC', 'moles', 'kg', '', 'ᵒC/m'])
+                        hints=['°C', 'moles', 'kg', '', 'ᵒC/m'])
 
 boiling_elevate = Solver(['ΔT_b', 'Molesₛₒₗᵤₜₑ', 'Massₛₒₗᵥ', 'i', 'K_b'],
                          'Molesₛₒₗᵤₜₑ / Massₛₒₗᵥ * i * K_b - ΔT_b',
-                         hints=['ᵒC', 'moles', 'kg', '', 'ᵒC/m'])
+                         hints=['°C', 'moles', 'kg', '', 'ᵒC/m'])
 
 def raoult():
     raoult_solver.run()
