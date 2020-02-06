@@ -1,10 +1,17 @@
 import itertools
 from math import gcd
+from math import log
+from math import e
 from collections import Counter
 try:
+    # Import parsing-related functions/classes
     from sympy.parsing.sympy_parser import parse_expr
+    from sympy.core.numbers import Float as sympyFloat
     from sympy import solve as solve_expr
+    from sympy import nsolve as nsolve_expr
     from sympy.physics import units as u
+    #from sympy.abc import x
+    from sympy import symbols
     INITIALIZED = True
 except ModuleNotFoundError:
     print("WARNING: Unable to import 'SymPy' module.  Most algebra-solving functions will be unavailable.")
@@ -21,6 +28,14 @@ def find_gcd(l):
     for i in range(2, len(l)):
         x = gcd(x, l[i])
     return x
+
+def rate(molarity_a:list, molarity_b:list, rates:list):
+    """Assist in guessing a rate law.  Takes two lists of concentration data and one list of rate data."""
+    order_a = float(input("Order A guess: "))
+    order_b = float(input("Order B guess: "))
+    print("Resulting rate constants:")
+    for i, (j, k, l) in enumerate(zip(molarity_a, molarity_b, rates)):
+        print(i, "-", l / (j ** order_a * k ** order_b))
 
 def conv_unit(x, unit1, unit2):
     """Utility function for pressure unit conversion"""
@@ -61,7 +76,7 @@ def docs(search=None):
 class Solver:
     """Utility/wrapping class used when it is necessary to solve for a specific variable"""
 
-    def __init__(self, variables: list, equation: str, hints=None):
+    def __init__(self, variables: list, equation: str, units=None, hints=None):
         self.variables = variables
         
         # Check equation usability
@@ -69,10 +84,27 @@ class Solver:
             raise ValueError("Equation must be set up such that it equals zero!  No equal sign should be necessary")
         else:
             self.equation = equation
-            
+
+        # Load units property
+        if units is None:
+            # Default unit: None
+            self.units = [1] * len(variables)
+        else:
+            # Hint exists, check for validity
+            if len(units) == len(variables):
+                # Hint list is the correct length
+                self.units = units
+            else:
+                # Hint list is the incorrect length
+                raise ValueError("Dimension mismatch between 'variables' list and 'units' list.")
+
+        # Load hints property
         if hints is None:
             # Default hint: Nothing
-            self.hints = [""] * len(variables)
+            if units is None:
+                self.hints = [""] * len(variables)
+            else:
+                self.hints = [" ({})".format(i) for i in units]
         else:
             # Hint exists, check for validity
             if len(hints) == len(variables):
@@ -80,7 +112,7 @@ class Solver:
                 self.hints = [" ({})".format(i) for i in hints]
             else:
                 # Hint list is the incorrect length
-                raise ValueError("Dimension mismatch between 'variables' list and 'hint' list.")
+                raise ValueError("Dimension mismatch between 'variables' list and 'hints' list.")
 
     def __repr__(self):
         """Return a string representation of the equation"""
@@ -88,6 +120,7 @@ class Solver:
 
     def _run(self, values: dict):
         """Compute the equation using a set of inputs"""
+        # TODO: Look into using .format instead of .replace
         if not INITIALIZED:
             raise ModuleNotFoundError("Cannot run solver without SymPy module!")
         # Substitute the values into the equation
@@ -97,7 +130,15 @@ class Solver:
         print(eq)
 
         # Parse and solve equation
-        return solve_expr(parse_expr(eq))[0]
+        result = solve_expr(parse_expr(eq))[0]
+        if type(result) in [int, float, sympyFloat]:
+            return result
+        elif type(result) == dict:
+            a = list(result.items())[0]
+            return a[0] * solve_expr(a[1] - 1)[0]
+        else:
+            print("WARNING: Result of type '{}' was unexpected".format(type(result)))
+            return result
     
     def run(self):
         """Wrapper for the '_run' function"""
@@ -107,10 +148,12 @@ class Solver:
         unknown_exists = False
         print("Use 'x' to indicate the SINGULAR unknown variable")
         # Ask user to input values for each variable
-        for i, j in zip(self.variables, self.hints):
-            user_input = input("{}{}: ".format(i, j))
-            values.append(user_input)
-            if 'x' in user_input:
+        for i, j, k in zip(self.variables, self.hints, self.units):
+            user_input = eval(input("{}{}: ".format(i, j)))
+            if type(user_input) in [int, float]:
+                user_input *= k
+            values.append("({})".format(user_input))
+            if 'x' in str(user_input):
                 # Register the unknown variable
                 unknown = i
                 unknown_hint = j
@@ -118,7 +161,10 @@ class Solver:
                 
         if unknown_exists:
             # There was an unknown, proceed to solving
-            print("{}{} = {}".format(unknown, unknown_hint, self._run(dict(zip(self.variables, values)))))
+            print("{}{} = {}".format(unknown,
+                                     unknown_hint,
+                                     self._run(dict(zip(["__" + i for i in self.variables],
+                                                        values)))))
         else:
             # I'm sorry Dave, but I'm afraid I can't do that
             raise ValueError("No unknown variable provided")
@@ -1854,23 +1900,40 @@ heat_of_vaporization = {Ne: 1.8, O*2: 6.82, C*(H*4): 8.18, C*C*(H*6): 14.72, Cl*
 boiling_point = {Ne: -246.15, O*2: -182.95, C*(H*4): -161.15, C*C*(H*6): -89.15, Cl*2: -34.15,
                  C*(Cl*4): 76.85, H*H*O: 99.95, (C*9)*(H*20): 217.85, Hg: 356.85, Na: 884.85, Al: 2326.85}
 
-R = 0.082058 # Ideal gas constant in L atm / (mol K)
+# Declare some constants
+R = 0.082058 * u.l * u.atm / u.mol / u.K # Ideal gas constant in L atm / (mol K)
+R2 = 8.314 * u.J / u.K / u.mol
 
 # Declare some basic solvers
 raoult_solver = Solver(['Pₛₒₗₙ', 'Pₛₒₗᵥ', 'Molesₛₒₗᵥ', 'Molesₛₒₗᵤₜₑ'],
-                        'Pₛₒₗᵥ * Molesₛₒₗᵥ / (Molesₛₒₗᵥ + Molesₛₒₗᵤₜₑ) - Pₛₒₗₙ',
+                        '__Pₛₒₗᵥ * __Molesₛₒₗᵥ / (__Molesₛₒₗᵥ + __Molesₛₒₗᵤₜₑ) - __Pₛₒₗₙ',
+                        units=[u.atm, u.atm, u.moles, u.moles],
                         hints=['atm', 'atm', '', ''])
 
 freeze_depress = Solver(['ΔT_f', 'Molesₛₒₗᵤₜₑ', 'Massₛₒₗᵥ', 'i', 'K_f'],
-                        'Molesₛₒₗᵤₜₑ / Massₛₒₗᵥ * i * K_f - ΔT_f',
-                        hints=['°C', 'moles', 'kg', '', 'ᵒC/m'])
+                        '__Molesₛₒₗᵤₜₑ / __Massₛₒₗᵥ * __i * __K_f - __ΔT_f',
+                        units=[u.kelvin, u.moles, u.kg, 1, u.kelvin * u.kg / u.moles],
+                        hints=['K', 'moles', 'kg', '', 'K*kg/mol'])
 
 boiling_elevate = Solver(['ΔT_b', 'Molesₛₒₗᵤₜₑ', 'Massₛₒₗᵥ', 'i', 'K_b'],
-                         'Molesₛₒₗᵤₜₑ / Massₛₒₗᵥ * i * K_b - ΔT_b',
-                         hints=['°C', 'moles', 'kg', '', 'ᵒC/m'])
+                         '__Molesₛₒₗᵤₜₑ / __Massₛₒₗᵥ * __i * __K_b - __ΔT_b',
+                         units=[u.kelvin, u.moles, u.kg, 1, u.kelvin * u.kg / u.moles],
+                         hints=['K', 'moles', 'kg', '', 'K*kg/mol'])
 
-def raoult():
-    raoult_solver.run()
+arrhenius = Solver(['ln(k)', 'ln(A)', 'Eₐ/R', 'T'],
+                   '-__ln(k) + __ln(A) - __Eₐ/R / __T')
+
+zero_order_rate = Solver(['[A]', '[A₀]', 'k', 't'],
+                         '-__k * __t + __[A₀] - __[A]')
+
+first_order_rate = Solver(['ln([A])', 'ln([A]₀)', 'k', 't'],
+                          '-__ln([A]) + __ln([A]₀) - __k * __t')
+
+second_order_rate = Solver(['1/[A]', '1/[A₀]', 'k', 't'],
+                           '__k * __t + __1/[A₀] - __1/[A]')
+
+# Declare global 'x' variable
+x=symbols('x', real=True)
 
 print("Use the function 'docs()' to print out all docstrings associated with all classes and their member functions")
 print("An optional argument may be entered to narrow the results to a single class")
