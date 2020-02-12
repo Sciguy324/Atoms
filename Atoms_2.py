@@ -74,7 +74,8 @@ def docs(search=None):
     if search is None: print("\nExample of syntax:\n  Mg*ep*ep*aq + Ba*(2*NO3)*aq > Ba*ep*ep*aq + Mg*(2*NO3)*aq\nBecomes:\n", Mg*ep*ep*aq + Ba*(2*NO3)*aq > Ba*ep*ep*aq + Mg*(2*NO3)*aq)
 
 class Solver:
-    """Utility/wrapping class used when it is necessary to solve for a specific variable"""
+    """Utility/wrapping class used when it is necessary to solve for a specific variable.
+See bottom of file for declared solvers"""
 
     def __init__(self, variables: list, equation: str, units=None, hints=None):
         self.variables = variables
@@ -1668,6 +1669,41 @@ Consider raising the limit by using .solve(limit=NEW_LIMIT_HERE)""".format(limit
         for i in self.right._assign_oxidation():
             for j, k in i.items():
                 print(j, "-", k)
+
+##    def equil(self):
+##        """Calculated the equilibrium constant of a given reaction"""
+##        print("Input equilibrium concentrations")
+##        
+##        denominator = 1
+##        for i, j in self.left.parts.items():
+##            if i.state not in [l, g]:
+##                denominator *= eval(input("[{}]: ".format(i))) ** j
+##                
+##        numerator = 1
+##        for i, j in self.right.parts.items():
+##            if i.state not in [l, g]:
+##                numerator *= eval(input("[{}]: ".format(i))) ** j
+##
+##        return numerator / denominator
+
+    def equil(self):
+        """General equation solver for equilibrium coefficients"""
+        variables = ["k"]
+        products = "1"
+        for i, j in self.right.parts.items():
+            if i.state not in [l, s]:
+                variables.append("[{}]".format(i))
+                products += "*(__[{}])**{}".format(i, j)
+
+        reactants = "1"
+        for i, j in self.left.parts.items():
+            if i.state not in [l, s]:
+                variables.append("[{}]".format(i))
+                reactants += "*(__[{}])**{}".format(i, j)
+            
+        general = "({}) / ({}) - __k".format(products, reactants)
+
+        return Solver(variables, general).run()
         
 
 # Declare elements
@@ -1931,6 +1967,9 @@ first_order_rate = Solver(['ln([A])', 'ln([A]₀)', 'k', 't'],
 
 second_order_rate = Solver(['1/[A]', '1/[A₀]', 'k', 't'],
                            '__k * __t + __1/[A₀] - __1/[A]')
+
+equil_const_convert = Solver(['Kₚ', 'K_c', 'T', 'Δn'],
+                             '__K_c * (0.082058 * __T) ** __Δn - __Kₚ')
 
 # Declare global 'x' variable
 x=symbols('x', real=True)
