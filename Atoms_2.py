@@ -7,10 +7,10 @@ try:
     # Import parsing-related functions/classes
     from sympy.parsing.sympy_parser import parse_expr
     from sympy.core.numbers import Float as sympyFloat
+    from sympy.core.add import Add as sympyAdd
     from sympy import solve as solve_expr
     from sympy import nsolve as nsolve_expr
     from sympy.physics import units as u
-    #from sympy.abc import x
     from sympy import symbols
     INITIALIZED = True
 except ModuleNotFoundError:
@@ -119,9 +119,12 @@ See bottom of file for declared solvers"""
         """Return a string representation of the equation"""
         return self.equation + ' = 0'
 
-    def _run(self, values: dict):
+    def __call__(self):
+        """Allows solvers to be called with the syntax foo()"""
+        self.run()
+
+    def _run(self, values: dict, return_all=False):
         """Compute the equation using a set of inputs"""
-        # TODO: Look into using .format instead of .replace
         if not INITIALIZED:
             raise ModuleNotFoundError("Cannot run solver without SymPy module!")
         # Substitute the values into the equation
@@ -131,17 +134,31 @@ See bottom of file for declared solvers"""
         print(eq)
 
         # Parse and solve equation
-        result = solve_expr(parse_expr(eq))[0]
+        if return_all:
+            return solve_expr(parse_expr(eq))
+        else:
+            result = solve_expr(parse_expr(eq))
+            if type(result) == list and len(result) == 1:
+                result = result[0]
         if type(result) in [int, float, sympyFloat]:
             return result
         elif type(result) == dict:
+            print(result)
             a = list(result.items())[0]
             return a[0] * solve_expr(a[1] - 1)[0]
+        elif type(result) == list:
+            for i in result:
+                try:
+                    a = list(i.items())[0]
+                    return a[0] * solve_expr(a[1] - 1)[0]
+                except IndexError:
+                    pass
+            print("An error occured while attempting to find the solution\n\t", result)
         else:
             print("WARNING: Result of type '{}' was unexpected".format(type(result)))
             return result
     
-    def run(self):
+    def run(self, return_all=False):
         """Wrapper for the '_run' function"""
         values = []
         unknown = ''
@@ -165,7 +182,7 @@ See bottom of file for declared solvers"""
             print("{}{} = {}".format(unknown,
                                      unknown_hint,
                                      self._run(dict(zip(["__" + i for i in self.variables],
-                                                        values)))))
+                                                        values)), return_all)))
         else:
             # I'm sorry Dave, but I'm afraid I can't do that
             raise ValueError("No unknown variable provided")
@@ -532,15 +549,65 @@ class Molecule:
         """Appends something onto the molecule"""
         amount = x.extract_count()
         
-        # First check if the thing is an element that has been cast as a 'molecule'
+        # First check if the 'x' is an element that has been cast as a 'molecule'
         if type(x) == Molecule and len(x.parts) == 1 and tuple(x.parts.items())[0][1] == 1:
             x = tuple(x.parts.items())[0][0]        
 
-        # Add thing to molecule dictionary by the amount previously extracted
+        # Add 'x' to molecule dictionary by the amount previously extracted
         if x in self.parts:
             self.parts[x] += amount
         else:
             self.parts[x] = amount
+
+    def _remove(self, x):
+        """Removes something from the molecule.  Warning: for internal use only due too finiky-ness"""
+        # TODO: Turn this into '_remove_atom()'
+        amount = x.extract_count()
+        
+        # First check if the 'x' is an element that has been cast as a 'molecule'
+        if type(x) == Molecule and len(x.parts) == 1 and tuple(x.parts.items())[0][1] == 1:
+            x = tuple(x.parts.items())[0][0]
+        print(self.parts)
+        # Remove 'x' from molecule dictionary by the amount previously extracted, if possible
+        if x in self.parts:
+            if self.parts[x] - amount > 0:
+                self.parts[x] -= amount
+            elif self.parts[x] - amount == 0:
+                del self.parts[x]
+            else:
+                # 'x' was not found in root dictionary, check components
+                for i, j in self.parts.items():
+                    try:
+                        # Attempt to remove from component
+                        if type(i) is Polyatomic:
+                            i = Molecule(i.parts, i.count, i.charge)
+                        i.remove(x)
+                    except ValueError:
+                        # Not found in component
+                        continue
+                    else:
+                        # Successly removed from a component
+                        return
+                        
+                # 'x' was not found in components
+                raise ValueError("Could not find {} in {}".format(x, self))
+        else:
+            # 'x' was not found in root dictionary, check components
+            for i, j in self.parts.items():
+                try:
+                    # Attempt to remove from component
+                    if type(i) is Polyatomic:
+                        i = Molecule(i.parts, i.count, i.charge)
+                    i.remove(x)
+                except ValueError:
+                    # Not found in component
+                    continue
+                else:
+                    # Successly removed from a component
+                    return
+                
+            # 'x' was not found in components
+            raise ValueError("Could not find {} in {}".format(x, self))
 
     def molar_mass(self):
         """Calculate the molar mass of the element"""
@@ -904,6 +971,16 @@ class Molecule:
         """Wrapper for _assign_oxidation to print results in a more readable format"""
         for i, j in self._assign_oxidation().items():
             print(i, ":", j)
+
+    def conjugate_acid(self):
+        """Returns the conjugate acid of the molecule"""
+        return self * H * ep
+
+    def conjugate_base(self):
+        """Returns the conjugate base of the molecule"""
+        result = self.copy()
+        result._remove(H)
+        return result * en
 
     def __mul__(self, x):
         """Overload the multiplication operator for 'ease of use'"""
@@ -1670,23 +1747,7 @@ Consider raising the limit by using .solve(limit=NEW_LIMIT_HERE)""".format(limit
             for j, k in i.items():
                 print(j, "-", k)
 
-##    def equil(self):
-##        """Calculated the equilibrium constant of a given reaction"""
-##        print("Input equilibrium concentrations")
-##        
-##        denominator = 1
-##        for i, j in self.left.parts.items():
-##            if i.state not in [l, g]:
-##                denominator *= eval(input("[{}]: ".format(i))) ** j
-##                
-##        numerator = 1
-##        for i, j in self.right.parts.items():
-##            if i.state not in [l, g]:
-##                numerator *= eval(input("[{}]: ".format(i))) ** j
-##
-##        return numerator / denominator
-
-    def equil(self):
+    def equil_const(self):
         """General equation solver for equilibrium coefficients"""
         variables = ["k"]
         products = "1"
@@ -1704,6 +1765,95 @@ Consider raising the limit by using .solve(limit=NEW_LIMIT_HERE)""".format(limit
         general = "({}) / ({}) - __k".format(products, reactants)
 
         return Solver(variables, general).run()
+
+    def init_to_equil(self):
+        """Equation solver that uses information initial and equilibrium concentrations"""
+        variables = ["k", "x_value"]
+        products = "1"
+        for i, j in self.right.parts.items():
+            if i.state not in [l, s]:
+                variables.append("[{}]".format(i))
+                products += "*(__[{}] + {}*__x_value)**{}".format(i, j, j)
+
+        reactants = "1"
+        for i, j in self.left.parts.items():
+            if i.state not in [l, s]:
+                variables.append("[{}]".format(i))
+                reactants += "*(__[{}] - {}*__x_value)**{}".format(i, j, j)
+            
+        general = "({}) / ({}) - __k".format(products, reactants)
+
+        return Solver(variables, general).run()
+
+    def reach_equil(self):
+        """Calculates the concentrations of all species after a reaction that is not in equilibrium reaches equilibrium"""
+        products = "1"
+        reactants = "1"
+        product_dict = {}
+        product_counts = {}
+        reactant_dict = {}
+        reactant_counts = {}
+        print(self)
+        print("Enter initial concentrations/partial pressures")
+
+        # Obtain products data
+        for i, j in self.right.parts.items():
+            user_input = eval(input("[{}]: ".format(i)))
+            product_dict[i] = user_input
+            product_counts[i] = j
+            if i.state not in [l, s]:
+                products += "*({} + {}*x)**{}".format(user_input, j, j)
+
+        # Obtain reactants data
+        for i, j in self.left.parts.items():
+            user_input = eval(input("[{}]: ".format(i)))
+            reactant_dict[i] = user_input
+            reactant_counts[i] = j
+            if i.state not in [l, s]:
+                reactants += "*({} - {}*x)**{}".format(user_input, j, j)
+
+        # Obtain equilibrium constant
+        equil_constant = eval(input("k: "))
+
+        # Solve the equation
+        equation = "({}) / ({}) - {}".format(products, reactants, equil_constant)
+        print(equation)
+        solutions = solve_expr(parse_expr(equation))
+        print("Solutions before checking:", solutions)
+
+        from sympy import re, im, simplify
+        
+        # Determine which possible solutions are valid
+        for i in solutions.copy():
+            if type(i) is sympyAdd:
+                solutions.remove(i)
+                continue
+            
+            # Check if the resulting reactant concentrations are nonnegative
+            for (k, m), (n, p) in zip(reactant_dict.items(), reactant_counts.items()):
+                if m - p*i < 0:
+                    solutions.remove(i)
+                    break
+            
+            # Check if the resulting product concentrations are nonnegative
+            for (k, m), (n, p) in zip(product_dict.items(), product_counts.items()):
+                if m + p*i < 0:
+                    solutions.remove(i)
+                    break
+            
+        print("Valid solutions:", solutions)
+
+        # Print the results of each valid solution
+        for i, j in enumerate(solutions):
+            print("Solution {}:".format(i))
+            for (k, m), (n, p) in zip(reactant_dict.items(), reactant_counts.items()):
+                print("{}: {}".format(k, m - p*j))
+            for (k, m), (n, p) in zip(product_dict.items(), product_counts.items()):
+                print("{}: {}".format(k, m + p*j))
+
+        # There were no solutions
+        if len(solutions) == 0:
+            print("Unable to find a solution!")
         
 
 # Declare elements
@@ -1941,6 +2091,12 @@ R = 0.082058 * u.l * u.atm / u.mol / u.K # Ideal gas constant in L atm / (mol K)
 R2 = 8.314 * u.J / u.K / u.mol
 
 # Declare some basic solvers
+
+pvnrt_solver = Solver(['P', 'V', 'n', 'T'],
+                      '__P * __V - __n * 0.082058*atmosphere*liter/(kelvin*mole) * __T',
+                      units=[u.atm, u.l, u.moles, u.K],
+                      hints=['atm', 'L', 'moles','K'])
+
 raoult_solver = Solver(['Pₛₒₗₙ', 'Pₛₒₗᵥ', 'Molesₛₒₗᵥ', 'Molesₛₒₗᵤₜₑ'],
                         '__Pₛₒₗᵥ * __Molesₛₒₗᵥ / (__Molesₛₒₗᵥ + __Molesₛₒₗᵤₜₑ) - __Pₛₒₗₙ',
                         units=[u.atm, u.atm, u.moles, u.moles],
