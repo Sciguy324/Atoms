@@ -153,6 +153,8 @@ See bottom of file for declared solvers"""
                     return a[0] * solve_expr(a[1] - 1)[0]
                 except IndexError:
                     pass
+                except AttributeError:
+                    return result
             print("An error occured while attempting to find the solution\n\t", result)
         else:
             print("WARNING: Result of type '{}' was unexpected".format(type(result)))
@@ -461,6 +463,10 @@ class Element:
         """Determines the energy change after enacting a temperature change on a mass of an element"""
         return mass * self.specific_heat * temperature_change
 
+    def _remove_atom(self, x):
+        """Handle case where an atom is attempted to be removed from an atom"""
+        raise ValueError("It is not possible to remove an atom ({}) from an atom ({})!".format(x, self))
+
     def __mul__(self, x):
         if type(x) == Element:
             # Element * Element -> Molecule
@@ -559,55 +565,58 @@ class Molecule:
         else:
             self.parts[x] = amount
 
-    def _remove(self, x):
+    def _remove_atom(self, x):
         """Removes something from the molecule.  Warning: for internal use only due too finiky-ness"""
-        # TODO: Turn this into '_remove_atom()'
-        amount = x.extract_count()
-        
-        # First check if the 'x' is an element that has been cast as a 'molecule'
+        # TODO: I don't like how this handles removing the atom from components
+        # First check if the 'x' is an Element that has been cast as a 'molecule'
         if type(x) == Molecule and len(x.parts) == 1 and tuple(x.parts.items())[0][1] == 1:
             x = tuple(x.parts.items())[0][0]
-        print(self.parts)
-        # Remove 'x' from molecule dictionary by the amount previously extracted, if possible
+
+        if type(x) != Element:
+            raise ValueError("Cannot remove non-element '{}' from '{}'".format(x, self))
+        
+        # Remove one 'x' from molecule dictionary, if possible
         if x in self.parts:
-            if self.parts[x] - amount > 0:
-                self.parts[x] -= amount
-            elif self.parts[x] - amount == 0:
+            if self.parts[x] > 1:
+                self.parts[x] -= 1
+            elif self.parts[x] == 1:
                 del self.parts[x]
             else:
-                # 'x' was not found in root dictionary, check components
-                for i, j in self.parts.items():
-                    try:
-                        # Attempt to remove from component
-                        if type(i) is Polyatomic:
-                            i = Molecule(i.parts, i.count, i.charge)
-                        i.remove(x)
-                    except ValueError:
-                        # Not found in component
-                        continue
-                    else:
-                        # Successly removed from a component
-                        return
-                        
-                # 'x' was not found in components
-                raise ValueError("Could not find {} in {}".format(x, self))
+                raise ValueError("An unexpected error occured while attempting to remove '{}' from '{}'".format(x, self))
         else:
             # 'x' was not found in root dictionary, check components
+            new_parts = {}
+            skip_checking = False
             for i, j in self.parts.items():
+                # The component was already removed, skip checking
+                if skip_checking:
+                    new_parts[i.copy()] = j
+                
+                # Cancel scanning this component if there's more than one of it
+                if j != 1:
+                    new_parts[i.copy()] = j
+                    continue
                 try:
                     # Attempt to remove from component
-                    if type(i) is Polyatomic:
-                        i = Molecule(i.parts, i.count, i.charge)
-                    i.remove(x)
+                    copy = i.copy()
+                    if type(copy) is Polyatomic:
+                        copy = Molecule(copy.parts, 1, 0)
+                    copy._remove_atom(x)
+                    new_parts[copy] = 1
+                    
                 except ValueError:
                     # Not found in component
+                    new_parts[i.copy()] = 1
                     continue
                 else:
                     # Successly removed from a component
-                    return
-                
-            # 'x' was not found in components
-            raise ValueError("Could not find {} in {}".format(x, self))
+                    skip_checking = True
+
+            if skip_checking:
+                self.parts = new_parts
+            else:
+                # 'x' was not found in components
+                raise ValueError("Could not remove '{}' from '{}'".format(x, self))
 
     def molar_mass(self):
         """Calculate the molar mass of the element"""
@@ -979,8 +988,16 @@ class Molecule:
     def conjugate_base(self):
         """Returns the conjugate base of the molecule"""
         result = self.copy()
-        result._remove(H)
+        result._remove_atom(H)
         return result * en
+
+    def acid_reaction(self):
+        """Determines the reaction in which the molecule acts as an acid"""
+        return (self + H*H*O > self.conjugate_base() + H*H*H*O*ep)
+
+    def base_reaction(self):
+        """Determines the  reaction in which the molecule acts as base"""
+        return (self + H*H*O > self.conjugate_acid() + OH*en)
 
     def __mul__(self, x):
         """Overload the multiplication operator for 'ease of use'"""
@@ -1203,6 +1220,14 @@ class Polyatomic:
     def assign_oxidation(self):
         """Wrapper for _assign_oxidation"""
         print(self, "-", self.oxidation())
+
+    def acid_reaction(self):
+        """Determines the reaction in which the molecule acts as an acid"""
+        return Molecule(self.parts, self.count, self.charge).acid_reaction()
+
+    def base_reaction(self):
+        """Determines the  reaction in which the molecule acts as base"""
+        return Molecule(self.parts, self.count, self.charge).base_reaction()
     
     def __mul__(self, x):
         """Overload the multiplication operator for 'ease of use'"""
@@ -1235,6 +1260,9 @@ class Polyatomic:
             result = self.copy()
             result.count *= x
             return result
+        elif type(x) == Charge:
+            # Polyatomic * charge
+            return Molecule({self.copy(): 1}) * x
         elif type(x) == State:
             # Polyatomic * State
             return x * self
@@ -1654,7 +1682,6 @@ Consider raising the limit by using .solve(limit=NEW_LIMIT_HERE)""".format(limit
     
     def simulate(self):
         """Simulates a chemical reaction with a set of starting conditions.  Conditions are provided through a user interface"""
-        #raise NotImplemented
         if not self.verify():
             if input("WARNING: Reaction is not balanced, run auto-balance? (Y/N): ").lower() == "n":
                 raise ValueError("Reaction '{}' is not balanced!", self)
@@ -1752,13 +1779,13 @@ Consider raising the limit by using .solve(limit=NEW_LIMIT_HERE)""".format(limit
         variables = ["k"]
         products = "1"
         for i, j in self.right.parts.items():
-            if i.state not in [l, s]:
+            if i.state not in [l, s] and i != H*H*O:
                 variables.append("[{}]".format(i))
                 products += "*(__[{}])**{}".format(i, j)
 
         reactants = "1"
         for i, j in self.left.parts.items():
-            if i.state not in [l, s]:
+            if i.state not in [l, s] and i != H*H*O:
                 variables.append("[{}]".format(i))
                 reactants += "*(__[{}])**{}".format(i, j)
             
@@ -1767,17 +1794,18 @@ Consider raising the limit by using .solve(limit=NEW_LIMIT_HERE)""".format(limit
         return Solver(variables, general).run()
 
     def init_to_equil(self):
-        """Equation solver that uses information initial and equilibrium concentrations"""
+        """Equation solver for equilibrium coefficients.  Applies for reactions that are some unit change, 'x,' away from equilibrium"""
+    
         variables = ["k", "x_value"]
         products = "1"
         for i, j in self.right.parts.items():
-            if i.state not in [l, s]:
+            if i.state not in [l, s] and i != H*H*O:
                 variables.append("[{}]".format(i))
                 products += "*(__[{}] + {}*__x_value)**{}".format(i, j, j)
 
         reactants = "1"
         for i, j in self.left.parts.items():
-            if i.state not in [l, s]:
+            if i.state not in [l, s] and i != H*H*O:
                 variables.append("[{}]".format(i))
                 reactants += "*(__[{}] - {}*__x_value)**{}".format(i, j, j)
             
@@ -1785,8 +1813,8 @@ Consider raising the limit by using .solve(limit=NEW_LIMIT_HERE)""".format(limit
 
         return Solver(variables, general).run()
 
-    def reach_equil(self):
-        """Calculates the concentrations of all species after a reaction that is not in equilibrium reaches equilibrium"""
+    def reach_equil_detailed(self):
+        """Calculates the concentrations/pressures of all species after a reaction that is not in equilibrium reaches equilibrium"""
         products = "1"
         reactants = "1"
         product_dict = {}
@@ -1798,19 +1826,21 @@ Consider raising the limit by using .solve(limit=NEW_LIMIT_HERE)""".format(limit
 
         # Obtain products data
         for i, j in self.right.parts.items():
-            user_input = eval(input("[{}]: ".format(i)))
-            product_dict[i] = user_input
-            product_counts[i] = j
-            if i.state not in [l, s]:
-                products += "*({} + {}*x)**{}".format(user_input, j, j)
+            if i != H*H*O:
+                user_input = eval(input("[{}]: ".format(i)))
+                product_dict[i] = user_input
+                product_counts[i] = j
+                if i.state not in [l, s]:
+                    products += "*({} + {}*x)**{}".format(user_input, j, j)
 
         # Obtain reactants data
         for i, j in self.left.parts.items():
-            user_input = eval(input("[{}]: ".format(i)))
-            reactant_dict[i] = user_input
-            reactant_counts[i] = j
-            if i.state not in [l, s]:
-                reactants += "*({} - {}*x)**{}".format(user_input, j, j)
+            if i != H*H*O:
+                user_input = eval(input("[{}]: ".format(i)))
+                reactant_dict[i] = user_input
+                reactant_counts[i] = j
+                if i.state not in [l, s]:
+                    reactants += "*({} - {}*x)**{}".format(user_input, j, j)
 
         # Obtain equilibrium constant
         equil_constant = eval(input("k: "))
