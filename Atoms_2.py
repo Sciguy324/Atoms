@@ -1,6 +1,7 @@
 import itertools
 from math import gcd
 from math import log
+from math import log10
 from math import e
 from collections import Counter
 try:
@@ -273,6 +274,7 @@ class Element:
         self.state = None
         Element.elements[symbol] = self
 
+    @property
     def molar_mass(self):
         """Returns the molar mass of the element"""
         return self.mol_mass
@@ -297,13 +299,14 @@ class Element:
         """Return the element's symbol for string representation"""
         return str(self.sym)
 
+    @property
     def symbol(self):
         """Return the element's symbol for string representation"""
         return str(self.sym)
 
     def grams_to_moles(self, grams):
         """Converts grams of an element to moles"""
-        return grams / self.molar_mass()
+        return grams / self.molar_mass
 
     def g2mol(self, grams):
         """Alias for grams_to_moles"""
@@ -311,7 +314,7 @@ class Element:
 
     def moles_to_grams(self, moles):
         """Converts moles of an element to grams"""
-        return self.molar_mass() * moles
+        return self.molar_mass * moles
 
     @classmethod
     def list(cls):     # This is organized/placed poorly
@@ -321,7 +324,7 @@ class Element:
                                                                  abs(3-len(i))*" ",
                                                                  j.atomic_number,
                                                                  (3 - len(str(j.atomic_number)))*" ",
-                                                                 j.molar_mass()))
+                                                                 j.molar_mass))
 
     @staticmethod
     def moles_to_atoms(moles):
@@ -457,7 +460,7 @@ class Element:
     
     def gas_density(self, temperature=273.15, pressure=1):
         """Calculates the density of the substance, assuming that it is a gas.  Default temperature and pressure are at gas STP"""
-        return self.molar_mass() * pressure / (R * temperature)
+        return self.molar_mass * pressure / (R * temperature)
 
     def heat(self, mass, temperature_change):
         """Determines the energy change after enacting a temperature change on a mass of an element"""
@@ -531,7 +534,7 @@ class Molecule:
     def __init__(self, parts_dict, count=1, charge=0, state=None):
         self.parts = parts_dict
         self.count = count
-        self.mol_mass = count * sum([j*(i.molar_mass()) for i, j in parts_dict.items()])
+        self.mol_mass = count * sum([j*(i.molar_mass) for i, j in parts_dict.items()])
         self.count = count
         self.charge = charge
         self.state = state
@@ -543,7 +546,10 @@ class Molecule:
         return self.compare(x, ignore_num=False)
 
     def __repr__(self):
-        return self.symbol()
+        return self.symbol
+
+    def __contains__(self, key):
+        return key in self.parts
 
     def extract_count(self):
         """Sets the count to 1 and returns what it was before"""
@@ -560,7 +566,7 @@ class Molecule:
             x = tuple(x.parts.items())[0][0]        
 
         # Add 'x' to molecule dictionary by the amount previously extracted
-        if x in self.parts:
+        if x in self:
             self.parts[x] += amount
         else:
             self.parts[x] = amount
@@ -576,7 +582,7 @@ class Molecule:
             raise ValueError("Cannot remove non-element '{}' from '{}'".format(x, self))
         
         # Remove one 'x' from molecule dictionary, if possible
-        if x in self.parts:
+        if x in self:
             if self.parts[x] > 1:
                 self.parts[x] -= 1
             elif self.parts[x] == 1:
@@ -618,15 +624,17 @@ class Molecule:
                 # 'x' was not found in components
                 raise ValueError("Could not remove '{}' from '{}'".format(x, self))
 
+    @property
     def molar_mass(self):
         """Calculate the molar mass of the element"""
-        self.mol_mass = self.count * sum([j *(i.molar_mass()) for i, j in self.parts.items()])
+        self.mol_mass = self.count * sum([j *(i.molar_mass) for i, j in self.parts.items()])
         return self.mol_mass
 
     def oxidation(self):
         """Get the oxidation state/charge of the thing"""
         return self.charge
 
+    @property
     def symbol(self):
         """Returns the symbol of the element"""
         result = ""
@@ -640,14 +648,14 @@ class Molecule:
 
         for i, j in self.parts.items():
             if type(i) == Element:
-                result += i.symbol()
+                result += i.symbol
                 if j > 1:
                     result += str(j).translate(sub)
             else:
                 if j > 1:
-                    result += "(" + i.symbol() + ")" + str(j).translate(sub)
+                    result += "(" + i.symbol + ")" + str(j).translate(sub)
                 else:
-                    result += i.symbol()
+                    result += i.symbol
 
         if self.charge not in [0, None]:
             result += "]"
@@ -673,9 +681,9 @@ class Molecule:
         """Converts grams of a molecule to moles.  If an element is specified, the number of
         moles of a particular element will be isolated and returned"""
         if element:
-            return self.parts[element] * grams / self.molar_mass()
+            return self.parts[element] * grams / self.molar_mass
         else:
-            return grams / self.molar_mass()
+            return grams / self.molar_mass
 
     def g2mol(self, grams):
         """Alias for grams_to_moles"""
@@ -693,9 +701,9 @@ class Molecule:
         """Converts the number of moles of a molecule to grams.  If an element is specified,
         the mass of that element will be isolated and returned instead."""
         if element:
-            return moles * (Molecule({element: self.parts[element]})).molar_mass()
+            return moles * (Molecule({element: self.parts[element]})).molar_mass
         else:
-            return moles * self.molar_mass()
+            return moles * self.molar_mass
 
     def molecules_to_moles(self, molecules, element=None):
         """Converts molecules of a sample to moles.  If an element is specified, the number of
@@ -740,7 +748,7 @@ class Molecule:
 
     def gas_density(self, temperature=273.15, pressure=1):
         """Calculates the density of the molecule, assuming that it is a gas.  Default temperature and pressure are at gas STP"""
-        return self.molar_mass() * pressure / (R * temperature)
+        return self.molar_mass * pressure / (R * temperature)
 
     def get_atoms(self):
         """Returns a dictionary of element-count pairs in the polyatomic"""
@@ -863,12 +871,12 @@ class Molecule:
 
     def _percents(self):
         """Get the percent mass of each element in a molecule"""
-        factor = 100 / self.molar_mass()
+        factor = 100 / self.molar_mass
         percents_dict = {}
 
         for i, j in self.parts.items():
             if i not in percents_dict:
-                percents_dict[i] = self.parts[i] * i.molar_mass() * factor
+                percents_dict[i] = self.parts[i] * i.molar_mass * factor
 
         return percents_dict
 
@@ -1078,11 +1086,11 @@ class Polyatomic:
             self.parts = dict(molec)
         else:
             self.parts = dict(molec.parts)
-        self.mol_mass = sum([j*i.molar_mass() for i, j in self.parts.items()])
+        self.mol_mass = sum([j*i.molar_mass for i, j in self.parts.items()])
         self.ox = oxidation
         self.count = count
         self.state = state
-        self.sym = self.symbol()
+        self.sym = self.symbol
         self.charge = oxidation
         if self not in Polyatomic.polyatomic_list:
             Polyatomic.polyatomic_list.append(self)
@@ -1097,15 +1105,18 @@ class Polyatomic:
         return self.compare(x, ignore_num=False)
 
     def __repr__(self):
-        return self.symbol()
+        return self.symbol
+
+    def __contains__(self, key):
+        return key in self.parts
 
     def grams_to_moles(self, grams, element=None):
         """Converts grams of a molecule to moles.  If an element is specified, the number of
         moles of a particular element will be isolated and returned"""
         if element:
-            return self.parts[element] * grams / self.molar_mass()
+            return self.parts[element] * grams / self.molar_mass
         else:
-            return grams / self.molar_mass()
+            return grams / self.molar_mass
 
     def g2mol(self, grams):
         """Alias for grams_to_moles"""
@@ -1115,19 +1126,21 @@ class Polyatomic:
         """Converts the number of moles of a molecule to grams.  If an element is specified,
         the mass of that element will be isolated and returned instead."""
         if element:
-            return moles * (Molecule({element: self.parts[element]})).molar_mass()
+            return moles * (Molecule({element: self.parts[element]})).molar_mass
         else:
-            return moles * self.molar_mass()
-    
+            return moles * self.molar_mass
+
+    @property
     def molar_mass(self):
         """Gets the molar mass of the polyatomic ion"""
-        self.mol_mass = sum([j*i.molar_mass() for i, j in self.parts.items()])
+        self.mol_mass = sum([j*i.molar_mass for i, j in self.parts.items()])
         return self.mol_mass
 
     def oxidation(self):
         """Get the oxidation state of the thing"""
         return self.ox
-    
+
+    @property
     def symbol(self):
         """Returns the symbol of the element"""
         result = ""
@@ -1137,14 +1150,14 @@ class Polyatomic:
 
         for i, j in self.parts.items():
             if type(i) == Element:
-                result += i.symbol()
+                result += i.symbol
                 if j > 1:
                     result += str(j).translate(sub)
             else:
                 if j > 1:
-                    result += "(" + i.symbol() + ")" + str(j).translate(sub)
+                    result += "(" + i.symbol + ")" + str(j).translate(sub)
                 else:
-                    result += i.symbol()
+                    result += i.symbol
 
         if self.state is not None:
             result += str(self.state)
@@ -1176,7 +1189,7 @@ class Polyatomic:
         if self == x:
             return 2*self
         
-        if x in self.parts:
+        if x in self:
             self.parts[x] += amount
         else:
             self.parts[x] = amount
@@ -1275,18 +1288,18 @@ class Polyatomic:
         return self.__mul__(x)
 
     def __add__(self, x):
-        if type(x) == Molecule:
-            # Molecule + Molecule -> Combination
+        if type(x) in [Molecule, Polyatomic]:
+            # Polyatomic + Molecule -> Combination
             count = self.extract_count()
             result = Combination({self: count})
             result.append(x)
             return result
         elif type(x) == Element:
-            # Molecule + Element -> Combination
+            # Polyatomic + Element -> Combination
             count = self.extract_count()
             return Combination({self: count, Molecule({x: 1}): 1})
         elif type(x) == Combination:
-            # Molecule + Combination -> Combination
+            # Polyatomic + Combination -> Combination
             count = self.extract_count()
             result = Combination({self: count})
             result += x
@@ -1331,7 +1344,7 @@ class Combination:
         return hash(self) == hash(x)
 
     def __repr__(self):
-        return self.symbol()
+        return self.symbol
 
     def __add__(self, x):
         result = self.copy()
@@ -1354,13 +1367,17 @@ class Combination:
         else:
             raise TypeError("Unsupported operation between {} and {}".format(type(self), type(x)))
 
+    def __contains__(self, key):
+        return key in self.parts
+
+    @property
     def symbol(self):
         """Returns the symbolic representation of the combination"""
         result = ""
         for i, j in self.parts.items():
             if j != 1:
                 result += str(j)
-            result += i.symbol() + " + "
+            result += i.symbol + " + "
         return result[:-3]
 
     def append(self, x):
@@ -1369,7 +1386,7 @@ class Combination:
         
         count = x.extract_count()
         
-        if x in self.parts:
+        if x in self:
             self.parts[x] += count
         else:
             self.parts[x] = count
@@ -1406,7 +1423,7 @@ class Combination:
         """Get the total mass, in g/mol, of the combination"""
         result = 0
         for i, j in self.parts.items():
-            result += i.molar_mass() * j
+            result += i.molar_mass * j
         return result
 
     def dissolve(self, ignore_ph=True):
@@ -1421,7 +1438,7 @@ class Combination:
         stage1 = []
         # Set up component-charge dictionary, sorted by molar mass
         parts = list(dict(self.parts).items())
-        parts.sort(key=lambda x: x[0].molar_mass())
+        parts.sort(key=lambda x: x[0].molar_mass)
 
         # Assign oxidation states to the components
         for i, j in parts:
@@ -1522,7 +1539,7 @@ class Reaction:
         self.right = RHS    
 
     def __repr__(self):
-        return self.left.symbol() + " -> " + self.right.symbol()
+        return self.left.symbol + " -> " + self.right.symbol
 
     def copy(self):
         """Returns a new, separate copy of a reaction"""
@@ -1691,7 +1708,7 @@ Consider raising the limit by using .solve(limit=NEW_LIMIT_HERE)""".format(limit
         print("Reacting:", self)
         print("Enter starting conditions (append 'grams' to denote a value in grams, otherwise moles are assumed):")
         for i, j in self.left.parts.items():
-            new_reactor = input(i.symbol() + ": ")
+            new_reactor = input(i.symbol + ": ")
             if "grams" in new_reactor:
                 new_reactor = abs(float(new_reactor.replace(" grams", "")))
                 new_reactor = i.grams_to_moles(new_reactor)
