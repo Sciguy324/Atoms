@@ -1660,7 +1660,7 @@ Take this as the solution? (Y/N): """.format(backup))
             user = input("""No solutions were found within the limit, but charge imbalances were detected.
 Run the solver again without regard to charges? (Y/N): """)
             if user.lower() == "y":
-                possible = self.solve(limit=limit, ignore_charge=True)
+                return self.solve(limit=limit, ignore_charge=True)
         
         raise TimeoutError("""Unable to solve the reaction within the specified limit ({}),
 Consider raising the limit by using .solve(limit=NEW_LIMIT_HERE)""".format(limit))
@@ -1901,7 +1901,247 @@ Consider raising the limit by using .solve(limit=NEW_LIMIT_HERE)""".format(limit
         # There were no solutions
         if len(solutions) == 0:
             print("Unable to find a solution!")
+                
+
+
+class AcidBase:
+    """Used to work with acid/base buffer solutions"""
+
+    def __init__(self, acid, base, ka=None, kb=None):
+        # Check for presense of hydrogen in acid
+        if H not in acid.get_atoms():
+            raise ValueError("Acid should have at least one hydrogen!")
+        # Check if hydrogen count in acid/base make sense
+        elif H in base.get_atoms():
+            if acid.get_atoms()[H] < base.get_atoms()[H]:
+                raise ValueError("Acid has fewer hydrogen atoms than base?")
+        if acid in strong_acids:
+            print("Warning: Solutions of strong acids and their conjugate base are generally not buffer solutions")
+        elif base in strong_bases:
+            print("Warning: Solutions of strong bases and their conjugate acid are generally not buffer solutions")
+        self.acid = acid.copy()
+        self.base = base.copy()
+        self.__ka = ka
+        self.__kb = kb
+
+    def __repr__(self):
+        return "<Buffer: {} / {}>".format(self.acid, self.base)
+
+    @property
+    def ka(self):
+        if self.__ka is None:
+            if self.__kb is None:
+                return None
+            else:
+                return (1e-14) / self.__kb
+        else:
+            return self.__ka
+
+    @property
+    def kb(self):
+        if self.__kb is None:
+            if self.__ka is None:
+                return None
+            else:
+                return (1e-14) / self.__ka
+        else:
+            return self.__kb
+
+    def acid_reach_equil(self):
+        """Determine equilibrium concentrations given initial conditions.  Assumes acid is on the left."""
+        self.acid_reaction().reach_equil_detailed()
+
+    def base_reach_equil(self):
+        """Determine equilibrium concentrations given initial conditions.  Assumes base is on the left."""
+        self.base_reaction().reach_equil_detailed()
+
+    def calc_pH(self):
+        """Calculates the pH of the solution at equilibrium"""
+        from sympy import re, im, simplify
+        print(self)
+        print("Enter initial concentrations:")
+
+        # Obtain acid concentration data
+        acid_conc = eval(input("[{}]: ".format(self.acid)))
+
+        # Obtain base concentration data
+        base_conc = eval(input("[{}]: ".format(self.base)))
+
+        # Initialize H/H3O concentration
+        x_conc = 0
+
+        base_mode = None
+
+        if acid_conc != 0 and base_conc != 0:
+            user_input = input("Is the acid or base on the left? (acid/base): ").lower()
+
+        # Guess the direction of the reaction given the concentrations
+        if acid_conc == 0 or user_input == "base":
+            # Assume base is on the left, since the alternative would yield no solution
+            base_mode = True
+            reaction = self.base_reaction()
+
+            # Obtain concentration of OH-
+            x_conc = eval(input("[OH⁻]: "))
+            
+            # Obtain equilibrium constant if none has been set
+            if self.kb is None:
+                self.set_kb(eval(input("k_b: ")))
+
+            # Substitute values into the equation
+            equation = "(({} + x) * ({} + x)) / (({} - x)) - {}".format(acid_conc, x_conc, base_conc, self.kb)
+            print(equation)
+
+        elif base_conc == 0 or user_input == "acid":
+            # Assume acid is on the left, since the alternative would yield no solution
+            base_mode = False
+            reaction = self.acid_reaction()
+            print("Assuming:", reaction)
+
+            # Obtain concentration of H3O+
+            x_conc = eval(input("[H₃O⁺]: "))
+
+            # Obtain equilibrium constant if none has been set
+            if self.ka is None:
+                self.set_ka(eval(input("kₐ: ")))
+
+            # Substitute values into the equation
+            equation = "(({} + x) * ({} + x)) / (({} - x)) - {}".format(base_conc, x_conc, acid_conc, self.ka)
+            print(equation)
+        else:
+            raise NotImplemented
+
+        # Solve the equation
+        solutions = solve_expr(parse_expr(equation))
+        print("Solutions before checking:", solutions)
+
+        # Remove invalid solutions
+        for i in solutions.copy():
+            # Remove imaginary solution
+            if type(i) is sympyAdd:
+                solutions.remove(i)
+                continue
+
+            if base_mode:
+                # Check if resulting reactant concentrations are nonnegative
+                if base_conc - i < 0:
+                    solutions.remove(i)
+                    continue
+                # Check if resulting product concentrations are nonnegative
+                if acid_conc + i < 0 or x_conc + i < 0:
+                    solutions.remove(i)
+                    continue
+            else:
+                # Check if resulting reactant concentrations are nonnegative
+                if acid_conc - i < 0:
+                    solutions.remove(i)
+                    continue
+                # Check if resulting product concentrations are nonnegative
+                if base_conc + i < 0 or x_conc + i < 0:
+                    solutions.remove(i)
+                    continue
         
+        print("Valid solutions:", solutions)
+
+        # Print the results of each valid solution
+        for i, j in enumerate(solutions):
+            print("Solution {}:".format(i))
+            # [X] + x gives the final [OH]
+            if base_mode:
+                print("pH:", 14 + log10(j + x_conc))
+                
+            # [X] + x gives the final [H]
+            else:
+                print("pH:", -log10(j + x_conc))
+
+        if len(solutions) == 0:
+            print("Unable to find a solution!")
+
+    def preparation_solver(self, approxilate=False):
+        """General equation solver for preparing a buffer of a specific pH"""
+        # Assume the acid is on the left
+        # Note: Doesn't matter if acid/base is on the left, you get the same answer either way
+        # variables: [BASE₀, ACID₀, pH, Ka]
+        if self.ka is None:
+            raise ValueError("Kₐ/K_b is not set.  Please define one or both using SELF.set_ka or/and SELF.set_kb")
+        variables = ['[{}]₀'.format(self.base), '[{}]₀'.format(self.acid), '[H₃O⁺]₀', 'pH']
+        equation = '(__[{}]₀ + 10**-__pH) * (__[H₃O⁺]₀ + 10**-__pH) / (__[{}]₀ - 10**-__pH) - {}'.format(self.base, self.acid, self.ka)
+        Solver(variables, equation).run()
+
+        if approxilate:
+              approx = self.preparation_approxilator()
+              print("'Incorrect' value:", approx)
+              actual = eval(input("Paste true value here: "))
+              print("Approxilation is {}% off".format(abs((actual - approx) / actual * 100)))
+
+        
+
+    def preparation_approxilator(self):
+        """When [Homework System that Must Not be Named] marks you wrong because it approxilated while you didn't."""
+        print("Approxilated Solver:")
+
+        pH = eval(input("pH: "))
+        
+        base = eval(input("[{}]₀: ".format(self.base)))
+        if base == 0:
+            part1 = str(10**-pH)
+        else:
+            part1 = str(base)
+        
+        acid = eval(input("[{}]₀: ".format(self.acid)))
+        if acid == 0:
+            part2 = str(10**-pH)
+        else:
+            part2 = str(acid)
+        
+        H3O = eval(input("[H₃O⁺]₀: "))
+        if H3O == 0:
+            part3 = str(10**-pH)
+        else:
+            part3 = str(H3O)
+
+        approxilated = part1 + ' * ' + part3 + ' / (' + part2 + ')' + ' - ' + str(self.ka)
+        print(approxilated)
+        return solve_expr(approxilated)[0]
+
+    def set_ka(self, value):
+        """Manually set the Ka value of the buffer"""
+        self.__ka = value
+
+    def set_kb(self, value):
+        """Manually set the Ka value of the buffer"""
+        self.__kb = value
+
+    def acid_reaction(self):
+        """Returns the reaction where the acid is on the left"""
+        return Reaction(self.acid.copy() + H*H*O, self.base.copy() + H*H*H*O*ep)
+
+    def base_reaction(self):
+        """Returns the reaction where the base is on the left"""
+        return Reaction(self.base.copy() + H*H*O, self.acid.copy() + OH*en)
+
+    def add_OH(self):
+        """Returns the reaction that results from adding a strong base to the buffer"""
+        
+        return Reaction(self.acid.copy() + OH*en,
+                        self.acid.conjugate_base().copy() + H*H*O)
+
+    def add_H(self):
+        """Returns the reaction that results from adding a strong acid to the buffer"""
+        return Reaction(self.base.copy() + H*ep,
+                        self.base.conjugate_acid().copy() + H*H*O)
+
+    def add(self, molecule):
+        """Returns the reaction that results from adding a strong acid/base to the buffer"""
+        # Molecule is a strong acid
+        if molecule in strong_acids:
+            return self.add_H()
+        # Molecule is a strong base
+        elif molecule in strong_bases:
+            return self.add_OH()
+        else:
+            raise ValueError("Molecule '{}' is not a strong acid/base".format(molecule))
+
 
 # Declare elements
 H = Element("H", 1.008, 1, 1, None)
