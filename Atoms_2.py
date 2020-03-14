@@ -1905,9 +1905,9 @@ Consider raising the limit by using .solve(limit=NEW_LIMIT_HERE)""".format(limit
 
 
 class AcidBase:
-    """Used to work with acid/base buffer solutions"""
+    """Used to work with acid/base solutions"""
 
-    def __init__(self, acid, base, ka=None, kb=None):
+    def __init__(self, acid: Molecule, base: Molecule, ka: float=None, kb: float=None):
         # Check for presense of hydrogen in acid
         if H not in acid.get_atoms():
             raise ValueError("Acid should have at least one hydrogen!")
@@ -1915,17 +1915,13 @@ class AcidBase:
         elif H in base.get_atoms():
             if acid.get_atoms()[H] < base.get_atoms()[H]:
                 raise ValueError("Acid has fewer hydrogen atoms than base?")
-        if acid in strong_acids:
-            print("Warning: Solutions of strong acids and their conjugate base are generally not buffer solutions")
-        elif base in strong_bases:
-            print("Warning: Solutions of strong bases and their conjugate acid are generally not buffer solutions")
         self.acid = acid.copy()
         self.base = base.copy()
         self.__ka = ka
         self.__kb = kb
 
     def __repr__(self):
-        return "<Buffer: {} / {}>".format(self.acid, self.base)
+        return "<AcidBase: {} / {}>".format(self.acid, self.base)
 
     @property
     def ka(self):
@@ -2057,6 +2053,58 @@ class AcidBase:
         if len(solutions) == 0:
             print("Unable to find a solution!")
 
+    def set_ka(self, value):
+        """Manually set the Ka value of the solution"""
+        self.__ka = value
+
+    def set_kb(self, value):
+        """Manually set the Kb value of the solution"""
+        self.__kb = value
+
+    def acid_reaction(self):
+        """Returns the reaction where the acid is on the left"""
+        return Reaction(self.acid.copy() + H*H*O, self.base.copy() + H*H*H*O*ep)
+
+    def base_reaction(self):
+        """Returns the reaction where the base is on the left"""
+        return Reaction(self.base.copy() + H*H*O, self.acid.copy() + OH*en)
+
+    def add_OH(self):
+        """Returns the reaction that results from adding a strong base to the solution"""
+        
+        return Reaction(self.acid.copy() + OH*en,
+                        self.acid.conjugate_base().copy() + H*H*O)
+
+    def add_H(self):
+        """Returns the reaction that results from adding a strong acid to the solution"""
+        return Reaction(self.base.copy() + H*ep,
+                        self.base.conjugate_acid().copy() + H*H*O)
+
+    def add(self, molecule):
+        """Returns the reaction that results from adding a strong acid/base to the solution"""
+        # Molecule is a strong acid
+        if molecule in strong_acids:
+            return self.add_H()
+        # Molecule is a strong base
+        elif molecule in strong_bases:
+            return self.add_OH()
+        else:
+            raise ValueError("Molecule '{}' is not a strong acid/base".format(molecule))
+
+
+class Buffer(AcidBase):
+    """Subclass of AcidBase for working with buffers"""
+
+    def __init__(self, acid: Molecule, base: Molecule, ka: float=None, kb: float=None):
+        super().__init__(acid, base)
+        if acid in strong_acids:
+            print("Warning: Solutions of strong acids and their conjugate base are generally not buffer solutions")
+        elif base in strong_bases:
+            print("Warning: Solutions of strong bases and their conjugate acid are generally not buffer solutions")
+
+    def __repr__(self):
+        return "<Buffer: {} / {}>".format(self.acid, self.base)
+
     def preparation_solver(self, approxilate=False):
         """General equation solver for preparing a buffer of a specific pH"""
         # Assume the acid is on the left
@@ -2073,8 +2121,6 @@ class AcidBase:
               print("'Incorrect' value:", approx)
               actual = eval(input("Paste true value here: "))
               print("Approxilation is {}% off".format(abs((actual - approx) / actual * 100)))
-
-        
 
     def preparation_approxilator(self):
         """When [Homework System that Must Not be Named] marks you wrong because it approxilated while you didn't."""
@@ -2103,44 +2149,6 @@ class AcidBase:
         approxilated = part1 + ' * ' + part3 + ' / (' + part2 + ')' + ' - ' + str(self.ka)
         print(approxilated)
         return solve_expr(approxilated)[0]
-
-    def set_ka(self, value):
-        """Manually set the Ka value of the buffer"""
-        self.__ka = value
-
-    def set_kb(self, value):
-        """Manually set the Ka value of the buffer"""
-        self.__kb = value
-
-    def acid_reaction(self):
-        """Returns the reaction where the acid is on the left"""
-        return Reaction(self.acid.copy() + H*H*O, self.base.copy() + H*H*H*O*ep)
-
-    def base_reaction(self):
-        """Returns the reaction where the base is on the left"""
-        return Reaction(self.base.copy() + H*H*O, self.acid.copy() + OH*en)
-
-    def add_OH(self):
-        """Returns the reaction that results from adding a strong base to the buffer"""
-        
-        return Reaction(self.acid.copy() + OH*en,
-                        self.acid.conjugate_base().copy() + H*H*O)
-
-    def add_H(self):
-        """Returns the reaction that results from adding a strong acid to the buffer"""
-        return Reaction(self.base.copy() + H*ep,
-                        self.base.conjugate_acid().copy() + H*H*O)
-
-    def add(self, molecule):
-        """Returns the reaction that results from adding a strong acid/base to the buffer"""
-        # Molecule is a strong acid
-        if molecule in strong_acids:
-            return self.add_H()
-        # Molecule is a strong base
-        elif molecule in strong_bases:
-            return self.add_OH()
-        else:
-            raise ValueError("Molecule '{}' is not a strong acid/base".format(molecule))
 
 
 # Declare elements
