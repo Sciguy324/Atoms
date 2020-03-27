@@ -571,6 +571,9 @@ class Molecule:
         else:
             self.parts[x] = amount
 
+        # Modify charge
+        self.charge += x.charge * amount
+
     def _remove_atom(self, x):
         """Removes something from the molecule.  Warning: for internal use only due too finiky-ness"""
         # TODO: I don't like how this handles removing the atom from components
@@ -820,7 +823,7 @@ class Molecule:
             return False
 
     def atomize(self):
-        """Converts a monotomic bonding coefficient to a quantity coefficient"""
+        """Converts a monotomic bonding coefficient to a quantity coefficient: H₂→2H"""
         copy = self.copy()
         if len(self.parts) == 1:
             count = copy.extract_count()
@@ -1011,16 +1014,28 @@ class Molecule:
         """Overload the multiplication operator for 'ease of use'"""
         if type(x) == Element:
             # Molecule * Element -> Molecule
-            result = self.copy()
-            result.append(x)
-            return result
+            if self.count == 1:
+                result = self.copy()
+                result.append(x)
+                return result
+            else:
+                copy = self.copy()
+                copy.extract_count()
+                return Molecule({copy: self.count, x: 1})
         elif type(x) == Molecule:
             # Molecule * Molecule -> Molecule
-            result = self.copy()
+            copy = self.copy()
+            count = copy.extract_count()
+            
+            result = Molecule(dict([(i, j*count) for i, j in copy.parts.items()]), 1, self.charge * count)
+
             copy2 = x.copy()
             copy2 = copy2.atomize()
+            
             result.append(copy2)
+            
             return result
+                
         elif type(x) == Polyatomic:
             # Molecule * polyatomic
             result = self.copy()
@@ -1046,6 +1061,23 @@ class Molecule:
     def __rmul__(self, x):
         """Support for reverse-order multiplication"""
         return self.__mul__(x)
+
+    def __pow__(self, x):
+        """Special case molecule construction, allows for greater control of structure"""
+        if type(x) in [Molecule, Polyatomic, Element]:
+            copy = self.copy()
+            count = copy.extract_count()
+            charge = copy.charge
+            copy.charge = 0
+            
+            copy2 = x.copy()
+            count2 = copy2.extract_count()
+            charge2 = copy2.charge
+            copy2.charge = 0
+            
+            return Molecule({copy: count, copy2: count2}, 1, charge + charge2)
+        else:
+            raise TypeError("Unsupported operation between {} and {}".format(type(self), type(x)))
 
     def __add__(self, x):
         count = self.extract_count()
@@ -1968,6 +2000,8 @@ class AcidBase:
 
         base_mode = None
 
+        user_input = ""
+
         if acid_conc != 0 and base_conc != 0:
             user_input = input("Is the acid or base on the left? (acid/base): ").lower()
 
@@ -2052,6 +2086,163 @@ class AcidBase:
 
         if len(solutions) == 0:
             print("Unable to find a solution!")
+
+    def equivalence_point(self, titrant=None, titrant_conc=None, conc=None, verbose=True):
+        """Calculate the pH of the equivalence point in an acid/base titration"""
+        # Obtain conditions
+        if titrant is None:
+            titrant = eval(input("Titrant Identity: "))
+        if titrant in strong_acids:
+            acid = True
+        elif titrant in strong_bases:
+            acid = False
+        else:
+            raise ValueError("Titrant was not a strong acid or base.  Make sure you are using polyatomics whenever possible!")
+        if titrant_conc is None:
+            titrant_conc = float(eval(input("[Titrant]: ")))
+        if conc is None:
+            if acid:
+                conc = float(eval(input("[Base]₀: ")))
+            else:
+                conc = float(eval(input("[Acid]₀: ")))
+
+        # Check for ka/kb
+        if self.ka is None:
+            raise ValueError("Please set either the ka or kb of the acid/base solution using [self].set_ka or [self].set_kb")
+
+        # Compute the concentration of the conjugate solution
+        conjugate_conc = conc / (conc/titrant_conc + 1)
+
+        # Solve for the final concentration of H⁺/OH⁻
+        if acid:
+            # Titrant was a strong acid, use ka
+            # Print information
+            if verbose:
+                print("Initial Reaction: ", self.add_H())
+                print("Reaction at Equivalence Point: ", self.acid_reaction())
+            # Solve for unit change
+            solutions = solve_expr("x**2 / ({} - x) - {}".format(conjugate_conc, self.ka))
+            if verbose: print("Potential solutions for [H⁺]: ", solutions)
+        else:
+            # Titrant was a strong base, use kb
+            # Print information
+            if verbose:
+                print("Initial Reaction: ", self.add_OH())
+                print("Reaction at Equivalence Point: ", self.base_reaction())
+            # Solve for unit change
+            solutions = solve_expr("x**2 / ({} - x) - {}".format(conjugate_conc, self.kb))
+            if verbose: print("Potential solutions for [OH⁻]: ", solutions)
+
+        # Eliminate invalid solutions
+        for i, j in enumerate(solutions.copy()):
+            # Solution should not be less than or equal to zero
+            if j <= 0:
+                del solutions[i]
+            # Solution should not be imaginary
+            elif type(j) is sympyAdd:
+                del solutions[i]
+
+        # First check if no valid solutions remain
+        if len(solutions) == 0:
+            raise Exception("An unknown error occured: all solutions were invalid")
+        elif len(solutions) > 1:
+            raise Exception("An unknown error occured: too many solutions were valid")
+
+        # Print final output
+        if verbose: 
+            print("Valid Solution:", solutions[0])
+            print("pH:")
+        if acid:
+            return -log10(solutions[0])
+        else:
+            return 14 + log10(solutions[0])
+        
+    def add_titrant(self, titrant=None, titrant_conc=None, titrant_volume=None, conc=None, volume=None):
+        """Calculates the pH of an acid/base solution after adding a titrant.  General case."""
+        # Obtain conditions
+        # Titrant status as an acid or base
+        if titrant is None:
+            titrant = eval(input("Identity of Titrant: "))
+        if titrant in strong_acids:
+            acid = True
+        elif titrant in strong_bases:
+            acid = False
+        else:
+            raise ValueError("Titrant was not a strong acid or base.  Make sure you are using polyatomics whenever possible!")
+
+        # Titrant concentration and volume added
+        if titrant_conc is None:
+            titrant_conc = float(eval(input("Titrant Concentration: ")))
+        if titrant_volume is None:
+            titrant_volume = float(eval(input("Volume of Titrant Added (L): ")))
+
+        # In the event that there are two H⁺/OH⁻ ions
+        if titrant in [H*H*SO4, Ca*(2*OH), Ba*(2*OH), Sr*(2*OH)]:
+            titrant_conc *= 2
+
+        # Acid/Base concentration and volume data
+        if acid:
+            if conc is None:
+                conc = float(eval(input("[Base]₀: ")))
+            if volume is None:
+                volume = float(eval(input("Initial Volume of Base: ")))
+        else:
+            if conc is None:
+                conc = float(eval(input("[Acid]₀: ")))
+            if volume is None:
+                volume = float(eval(input("Initial Volume of Acid: ")))
+
+        if self.base in [Ca*(2*OH), Ba*(2*OH), Sr*(2*OH)]:
+            conc *= 2
+        elif self.acid in [H*H*SO4]:
+            conc *= 2
+
+        # Compute number of moles
+        moles = conc * volume
+        titrant_moles = titrant_conc * titrant_volume
+
+        # Acid/Base happens to be a strong acid/base
+        if self.acid in strong_acids or self.base in strong_bases:
+            # Titrant does not completely react with acid/base
+            if titrant_moles < moles:
+                if acid:
+                    return 14 + log10((moles - titrant_moles)/(volume + titrant_volume))
+                else:
+                    return -log10((moles - titrant_moles)/(volume + titrant_volume))
+            # Titrant perfectly reacts with acid/base
+            elif titrant_moles == moles:
+                return 7
+            # Titrant exceeds acid/base
+            else:
+                if acid:
+                    return -log10((titrant_moles - moles)/(volume + titrant_volume))
+                else:
+                    return 14 + log10((titrant_moles-moles)/(volume + titrant_volume))
+
+        # Acid/base is not a strong acid/base
+
+        # Titrant does not completely react with acid/base
+        if titrant_moles < moles:
+            conjugate_moles = titrant_moles
+            moles -= titrant_moles
+            if acid:
+                # Titrant is an acid, so 'moles' refers to moles of base
+                return 14 + log10(self.kb) - log10(conjugate_moles / moles)
+            else:
+                # Titrant is an base, so 'moles' refers to moles of acid
+                return -log10(self.ka) + log10(conjugate_moles / moles)
+
+        # Titrant perfectly reacts with acid/base (equivalence point)
+        elif titrant_moles == moles:
+            return self.equivalence_point(titrant, titrant_conc, conc, False)
+
+        # There were more moles of titrant than initial acid/base
+        else:
+            if acid:
+                return -log10((titrant_moles - moles) / (volume + titrant_volume))
+            else:
+                return 14 + log10((titrant_moles - moles) / (volume + titrant_volume))
+    
 
     def set_ka(self, value):
         """Manually set the Ka value of the solution"""
