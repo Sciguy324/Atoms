@@ -572,7 +572,7 @@ class Molecule:
             self.parts[x] = amount
 
         # Modify charge
-        self.charge += x.charge * amount
+        #self.charge += x.charge * amount
 
     def _remove_atom(self, x):
         """Removes something from the molecule.  Warning: for internal use only due too finiky-ness"""
