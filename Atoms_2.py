@@ -22,7 +22,7 @@ DEBUG = False
 do_debug = False
 
 sub = str.maketrans("0123456789", "₀₁₂₃₄₅₆₇₈₉")
-sup = str.maketrans("0123456789+-", "⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻")
+sup = str.maketrans("0123456789+-.", "⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻ᐧ")
 
 def find_gcd(l):
     x = gcd(l[0], l[1])
@@ -161,7 +161,7 @@ See bottom of file for declared solvers"""
             print("WARNING: Result of type '{}' was unexpected".format(type(result)))
             return result
     
-    def run(self, return_all=False):
+    def run(self, return_all=False, return_result=False):
         """Wrapper for the '_run' function"""
         values = []
         unknown = ''
@@ -182,10 +182,13 @@ See bottom of file for declared solvers"""
                 
         if unknown_exists:
             # There was an unknown, proceed to solving
-            print("{}{} = {}".format(unknown,
-                                     unknown_hint,
-                                     self._run(dict(zip(["__" + i for i in self.variables],
-                                                        values)), return_all)))
+            result = self._run(dict(zip(["__" + i for i in self.variables], values)), return_all)
+            if return_result:
+                return result
+            else:                
+                print("{}{} = {}".format(unknown,
+                                         unknown_hint,
+                                         result))
         else:
             # I'm sorry Dave, but I'm afraid I can't do that
             raise ValueError("No unknown variable provided")
@@ -662,6 +665,7 @@ class Molecule:
 
         if self.charge not in [0, None]:
             result += "]"
+            # Prevent unnecessary decimals in charges
             if charge > 0:
                 if charge > 1:
                     result += str(charge).translate(sup)
@@ -846,10 +850,11 @@ class Molecule:
         copy.extract_count()
         return copy
     
-    def dissolve(self, ignore_ph=True):
+    def dissolve(self, ignore_ph=True, override_check=False):
         """Dissociates the ions of a molecule, if it's soluble"""
-        if not self.check_solubility(ignore_ph):
-            return self.copy()
+        if not override_check:
+            if not self.check_solubility(ignore_ph):
+                return self.copy()
 
         count = self.extract_count()
         if len(self.parts.items()) != 2:
@@ -871,6 +876,58 @@ class Molecule:
                 print("Warning: Is {} an acid that is not currently registered in the lookup table?".format(self))
         
         return result
+
+    def dissolve_salt(self, ignore_ph=True, override_check=True):
+        """Similar to .dissolve(), but returns the full dissolution reaction with the salt.
+Why so salty?"""
+        copy = self.copy()
+        return copy*s > copy.dissolve(ignore_ph, override_check)
+
+    def solubility_solver(self, dissolved:dict={}, approx=False):
+        """General solver for the solubility of a salt"""
+        if type(dissolved) is not dict:
+            raise TypeError("Dictionary of dissolved molecules + molarity is not a dictionary")
+        else:
+            if len(dissolved) > 0 and not approx:
+                user_input = input("Warning: There is a chance that the solver will not be able to solve this equation symbolically.  Would you like to approximate (y/n)?\n")
+                if user_input.lower() in ["yes", "y", "t", "true"]:
+                    approx = True
+                else:
+                    approx = False
+
+            ions = {}
+            for i, j in dissolved.items():
+                # i: Molecule, j: Concentration
+                for k, l in i.parts.items():
+                    # k: Part, l: Part count
+                    if k in ions:
+                        ions[k.copy()] += l * j
+                    else:
+                        ions[k.copy()] = l * j
+                    
+        
+        if len(self.parts) != 2:
+            raise ValueError("Unable to dissolve molecule - This script doesn't know how")
+        variables = ["Solubility", "kₛₚ"]
+        equation = "1"
+        for i, j in self.parts.items():
+            if i in ions:
+                if approx:
+                    equation += "*({})**{}".format(ions[i], j)
+                else:
+                    equation += "*({}*__Solubility + {})**{}".format(j, ions[i], j)
+            else:
+                equation += "*({}*__Solubility)**{}".format(j, j)
+        equation += "-__kₛₚ"
+        result = Solver(variables, equation).run(return_result=True)
+        if type(result) is list:
+            for i in result.copy():
+                if type(i) is sympyAdd or i < 0:
+                    result.remove(i)
+            return result
+        else:
+            return result
+        
 
     def _percents(self):
         """Get the percent mass of each element in a molecule"""
@@ -985,7 +1042,7 @@ class Molecule:
                 return result
 
         if len(ion_list) != 1:
-            raise ValueError("Error: unsufficient information to assign oxidation states")
+            raise ValueError("Error: insufficient information to assign oxidation states")
 
     def assign_oxidation(self):
         """Wrapper for _assign_oxidation to print results in a more readable format"""
@@ -1043,17 +1100,21 @@ class Molecule:
             copy2 = x.copy()
             result.append(copy2)
             return result
+        
         elif type(x) == int or type(x) == float:
             # n * Molecule -> n amount of Molecule
             return Molecule(dict(self.parts), self.count * x, self.charge)
+        
         elif type(x) == Charge:
             # Molecule * charge
             result = self.copy()
             result.charge += x.charge
             return result
+        
         elif type(x) == State:
             # Molecule * State
             return x * self
+        
         else:
             # Invalid operation
             raise TypeError("Unsupported operation between {} and {}".format(type(self), type(x)))
@@ -1307,7 +1368,9 @@ class Polyatomic:
             return result
         elif type(x) == Charge:
             # Polyatomic * charge
-            return Molecule({self.copy(): 1}) * x
+            copy = self.copy()
+            count = copy.extract_count()
+            return Molecule({copy: 1}, count) * x
         elif type(x) == State:
             # Polyatomic * State
             return x * self
@@ -1369,7 +1432,7 @@ class Combination:
                 else:
                     result[k] = m*j
 
-        print(result)
+        #print(result)
         return hash(tuple(result.items()))
 
     def __eq__(self, x):
@@ -1458,11 +1521,11 @@ class Combination:
             result += i.molar_mass * j
         return result
 
-    def dissolve(self, ignore_ph=True):
+    def dissolve(self, ignore_ph=True, ignore_check=False):
         """Dissociates the components of the combination"""
         result = Combination({})
         for i, j in self.parts.items():
-            result += (j*i).dissolve(ignore_ph)
+            result += (j*i).dissolve(ignore_ph, ignore_check)
         return result
 
     def _assign_oxidation(self):
@@ -1573,9 +1636,38 @@ class Reaction:
     def __repr__(self):
         return self.left.symbol + " -> " + self.right.symbol
 
+    def __mul__(self, x):
+        if type(x) in [float, int]:
+            result = self.copy()
+            # Number * (Reaction)
+            for j, k in self.left.parts.items():
+                result.left.parts[j] *= x
+            for j, k in self.right.parts.items():
+                result.right.parts[j] *= x
+            return result
+        else:
+            raise TypeError("Unsupported operation between {} and {}".format(type(self), type(x)))
+
+    def __add__(self, x):
+        if type(x) is Reaction:
+            result = self.copy()
+            copy = x.copy()
+            result.left += copy.left
+            result.right += copy.right
+            return result
+        else:
+            raise TypeError("Unsupported operation between {} and {}".format(type(self), type(x)))
+
+    def __rmul__(self, x):
+        return self.__mul__(x)
+
     def copy(self):
         """Returns a new, separate copy of a reaction"""
         return Reaction(self.left.copy(), self.right.copy())
+
+    def reverse(self):
+        """Swaps both sides of the reaction"""
+        return Reaction(self.right.copy(), self.left.copy())
 
     def verify(self):
         """Checks whether a reaction is balanced"""
@@ -2620,3 +2712,22 @@ print("Use the function 'docs()' to print out all docstrings associated with all
 print("An optional argument may be entered to narrow the results to a single class")
 if DEBUG: print("[Debug]: {} Polyatomic ions loaded".format(len(Polyatomic.polyatomic_list)))
 do_debug = True
+
+# EXPERIMENTAL FUNCTIONS
+def clear(n=35):
+    """Clears the console"""
+    print("\n"*n)
+
+def dissolve_in_ph(salt, k_sp, ka):
+    """[NOT GUARANTEED TO BE STABLE, OR WORK, AT ALL]
+Calculates the new equilibrium constant after dissolving a salt in an acid solution
+and provides the underlying reaction"""
+    dissolution = salt > salt.dissolve(True, True)
+    base, n = list(salt.dissolve(True, True).parts.items())[0]
+    base_reaction = n * AcidBase(base.conjugate_acid(), base).acid_reaction().reverse()
+    net_reaction = (dissolution + base_reaction).net_ionic()
+    print(net_reaction)
+    if k_sp is not None and ka is not None:
+            print("k = kₛₚ / kₐ{}:".format(str(n).translate(sup)))
+            print("k = {:e}".format(k_sp / ka**n))
+
