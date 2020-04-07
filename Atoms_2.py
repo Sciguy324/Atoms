@@ -1,3 +1,5 @@
+# But it started out ok!
+
 import itertools
 from math import gcd
 from math import log
@@ -306,6 +308,28 @@ class Element:
     def symbol(self):
         """Return the element's symbol for string representation"""
         return str(self.sym)
+
+    @property
+    def enthalpy(self):
+        """Uses a lookup table to find the element's molar enthalpy"""
+        if str(self) in molar_enthalpy:
+            return molar_enthalpy[str(self)] * u.J * 1000 / u.moles
+        else:
+            if self.state is None:
+                raise AttributeError("The ΔH⁰_f for '{}' could not be found in the molar_enthalpy lookup table (Hint: make sure to specify state!)".formate(self))
+            else:
+                raise AttributeError("The ΔH⁰_f for '{}' could not be found in the molar_enthalpy lookup table".format(self))
+
+    @property
+    def entropy(self):
+        """Uses a lookup table to find the element's standard entropy"""
+        if str(self) in standard_entropy:
+            return standard_entropy[str(self)] * u.J / u.moles / u.K
+        else:
+            if self.state is None:
+                raise AttributeError("The S⁰ for '{}' could not be found in the standard_entropy lookup table (Hint: make sure to specify state!)".format(self))
+            else:
+                raise AttributeError("The S⁰ for '{}' could not be found in the standard_entropy lookup table".format(self))
 
     def grams_to_moles(self, grams):
         """Converts grams of an element to moles"""
@@ -679,6 +703,28 @@ class Molecule:
             result += str(self.state)
             
         return result
+
+    @property
+    def enthalpy(self):
+        """Uses a lookup table to find the molecule's molar enthalpy"""
+        if str(self) in molar_enthalpy:
+            return molar_enthalpy[str(self)] * u.J * 1000 / u.moles
+        else:
+            if self.state is None:
+                raise AttributeError("The ΔH⁰_f for '{}' could not be found in the molar_enthalpy lookup table (Hint: make sure to specify state!)".formate(self))
+            else:
+                raise AttributeError("The ΔH⁰_f for '{}' could not be found in the molar_enthalpy lookup table".format(self))
+
+    @property
+    def entropy(self):
+        """Uses a lookup table to find the molecule's standard entropy"""
+        if str(self) in standard_entropy:
+            return standard_entropy[str(self)] * u.J / u.moles / u.K
+        else:
+            if self.state is None:
+                raise AttributeError("The S⁰ for '{}' could not be found in the standard_entropy lookup table (Hint: make sure to specify state!)".format(self))
+            else:
+                raise AttributeError("The S⁰ for '{}' could not be found in the standard_entropy lookup table".format(self))
 
     def copy(self):
         """Returns a new instance of the molecule identical to self."""
@@ -1257,6 +1303,28 @@ class Polyatomic:
             
         return result
 
+    @property
+    def enthalpy(self):
+        """Uses a lookup table to find the polyatomic's molar enthalpy"""
+        if str(self) in molar_enthalpy:
+            return molar_enthalpy[str(self)] * u.J * 1000 / u.moles
+        else:
+            if self.state is None:
+                raise AttributeError("The ΔH⁰_f for '{}' could not be found in the molar_enthalpy lookup table (Hint: make sure to specify state!)".formate(self))
+            else:
+                raise AttributeError("The ΔH⁰_f for '{}' could not be found in the molar_enthalpy lookup table".format(self))
+
+    @property
+    def entropy(self):
+        """Uses a lookup table to find the polyatomic's standard entropy"""
+        if str(self) in standard_entropy:
+            return standard_entropy[str(self)] * u.J / u.moles / u.K
+        else:
+            if self.state is None:
+                raise AttributeError("The S⁰ for '{}' could not be found in the standard_entropy lookup table (Hint: make sure to specify state!)".format(self))
+            else:
+                raise AttributeError("The S⁰ for '{}' could not be found in the standard_entropy lookup table".format(self))
+
     def atomize(self):
         """Converts a monotomic bonding coefficient to a quantity coefficient"""
         if len(self.parts) == 1:
@@ -1474,6 +1542,22 @@ class Combination:
                 result += str(j)
             result += i.symbol + " + "
         return result[:-3]
+
+    @property
+    def enthalpy(self):
+        """Returns the total molar enthalpy of the combination"""
+        result = 0
+        for i, j in self.parts.items():
+            result += j * i.enthalpy
+        return result
+
+    @property
+    def entropy(self):
+        """Returns the total standard entropy of the combination"""
+        result = 0
+        for i, j in self.parts.items():
+            result += j * i.entropy
+        return result
 
     def append(self, x):
         if type(x) not in [Element, Molecule, Polyatomic]:
@@ -2025,6 +2109,18 @@ Consider raising the limit by using .solve(limit=NEW_LIMIT_HERE)""".format(limit
         # There were no solutions
         if len(solutions) == 0:
             print("Unable to find a solution!")
+
+    def enthalpy(self):
+        """Returns the total net molar enthalpy change"""
+        return self.right.enthalpy - self.left.enthalpy
+
+    def entropy(self):
+        """Returns the total molar standard entropy change"""
+        return self.right.entropy - self.left.entropy
+
+    def standard_free_energy(self, temperature, moles):
+        """Returns the standard free energy of the reaction"""
+        return (self.enthalpy() - self.entropy() * temperature * u.K) * moles * u.moles
                 
 
 
@@ -2664,6 +2760,11 @@ heat_of_vaporization = {Ne: 1.8, O*2: 6.82, C*(H*4): 8.18, C*C*(H*6): 14.72, Cl*
 boiling_point = {Ne: -246.15, O*2: -182.95, C*(H*4): -161.15, C*C*(H*6): -89.15, Cl*2: -34.15,
                  C*(Cl*4): 76.85, H*H*O: 99.95, (C*9)*(H*20): 217.85, Hg: 356.85, Na: 884.85, Al: 2326.85}
 
+# Declare data scraped from a table
+molar_enthalpy = {'Al(s)': 0, 'AlCl₃(s)': -704.2, 'Al₂O₃(s)': -1675.7, 'Al(OH)₃(s)': -1277.0, 'Ba(s)': 0.0, 'BaCl₂(s)': -858.6, 'BaCO₃(s)': -1219.0, 'BaO(s)': -553.5, 'Ba(OH)₂(s)': -946.0, 'BaSO₄(s)': -1473.2, 'Be(s)': 0.0, 'BeO(s)': -599.0, 'Be(OH)₂(s)': -902.5, 'Br(g)': 111.9, 'Br₂(l)': 0.0, 'Br₂(g)': 30.9, 'Br₂(aq)': -3.0, '[Br]⁻(aq)': -121.0, 'BrF₃(g)': -255.6, 'HBr(g)': -36.3, 'Cd(s)': 0.0, 'CdO(s)': -258.0, 'Cd(OH)₂(s)': -561.0, 'CdS(s)': -162.0, 'CdSO₄(s)': -935.0, 'Ca(s)': 0.0, 'Ca(g)': 178.2, '[Ca]²⁺(g)': 1925.9, 'CaC₂(s)': -59.8, 'CaCO₃(s, calcite)': -1206.9, 'CaCl₂(s)': -795.8, 'CaF₂(s)': -1219.6, 'CaH₂(s)': -186.2, 'CaO(s)': -635.1, 'CaS(s)': -482.4, 'Ca(OH)₂(s)': -986.1, 'Ca(OH)₂(aq)': -1002.8, 'Ca₃(PO₄)₂(s)': -4126.0, 'CaSO₄(s)': -1434.1, 'CaSiO₃(s)': -1630.0, 'C (s, graphite)': 0.0, 'C (s, diamond)': 1.9, 'C(g)': 716.7, 'CCl₄(l)': -135.4, 'CCl₄(g)': -102.9, 'CHCl₃(l)': -134.5, 'CHCl₃(g)': -103.1, 'CH₄(g)': -74.8, 'CH₃OH(g)': -200.7, 'CH₃OH(l)': -238.7, 'H₂CO(g)': -116.0, 'HCOOH(g)': -363.0, 'HCN(g)': 135.1, 'C₂H₂(g)': 226.7, 'C₂H₄(g)': 52.3, 'CH₃CHO (g, acetaldehyde)': -166.0, 'C₂H₄O (g, ethylene oxide)': -53.0, 'CH₃CH₂OH(l)': -277.7, 'CH₃CH₂OH(g)': -235.1, 'CH₃COOH(l)': -484.0, 'C₂H₆(g)': -84.7, 'C₃H₆(g)': 20.9, 'C₃H₈(g)': -103.8, 'CH₂=CHCN(l)': 152.0, 'C₆H₆(l)': 49.0, 'C₆H₁₂O₆(s)': -1275.0, 'CO(g)': -110.5, 'CO₂(g)': -393.5, 'CS₂(g)': 117.4, 'COCl₂(g)': -218.8, 'Cl(g)': 121.7, 'Cl₂(g)': 0.0, 'Cl₂(aq)': -23.0, '[Cl]⁻(aq)': -167.0, '[Cl]⁻(g)': -233.1, 'HCl(g)': -92.3, 'HCl(aq)': -167.2, 'Cr(s)': 0.0, 'Cr₂O₃(s)': -1139.7, 'CrO₃(s)': -579.0, 'CrCl₃(s)': -556.5, 'Cu(s)': 0.0, 'CuCl₂(s)': -220.1, 'CuCO₃(s)': -595.0, 'Cu₂O(s)': -170.0, 'CuO(s)': -157.3, 'Cu(OH)₂(s)': -450.0, 'CuS(s)': -49.0, 'F₂(g)': 0.0, 'F(g)': 79.0, '[F]⁻(g)': -255.4, '[F]⁻(aq)': -332.6, 'HF(g)': -271.1, 'HF(aq)': -332.6, 'H₂(g)': 0.0, 'H(g)': 218.0, '[H]⁺(g)': 1536.2, '[H]⁺(aq)': 0.0, '[OH]⁻(aq)': -230.0, 'H₂O(l)': -285.8, 'H₂O(g)': -241.8, 'H₂O₂(l)': -187.8, 'I₂(s)': 0.0, 'I₂(g)': 62.4, 'I₂(aq)': 23.0, 'I(g)': 106.8, '[I]⁻(g)': -197.0, '[I]⁻(aq)': -55.0, 'ICl(g)': 17.8, 'Fe(s)': 0.0, 'Fe₃C(s)': 21.0, 'FeCl₂(s)': -341.8, 'FeCl₃(s)': -399.5, 'Fe₀.₉₅O(s) (wustite)': -264.0, 'FeO(s)': -272.0, 'Fe₃O₄(s)': -1118.4, 'Fe₂O₃(s)': -824.2, 'FeS(s)': -95.0, 'FeS₂(s)': -178.2, 'FeSO₄(s)': -929.0, 'Fe(CO)₅(l)': -774.0, 'Pb(s)': 0.0, 'PbCl₂(s)': -359.4, 'PbO (s)': -217.3, 'PbO₂(s)': -277.0, 'PbS(s)': -100.4, 'PbSO₄(s)': -920.0, 'Mg(s)': 0.0, 'MgCl₂(s)': -641.3, 'MgCO₃(s)': -1095.8, 'MgO(s)': -601.7, 'Mg(OH)₂(s)': -924.5, 'MgS(s)': -346.0, 'Mn(s)': 0.0, 'MnO(s)': -385.0, 'Mn₃O₄(s)': -1387.0, 'Mn₂O₃(s)': -971.0, 'MnO₂(s)': -521.0, '[MnO₄]⁻(aq)': -543.0, 'Hg(l)': 0.0, 'HgCl₂(s)': -224.3, 'Hg₂Cl₂(s)': -265.4, 'HgO (s)': -90.8, 'HgS (s)': -58.2, 'Ni(s)': 0.0, 'NiCl₂(s)': -305.3, 'NiO(s)': -239.7, 'Ni(OH)₂(s)': -538.0, 'NiS(s)': -93.0, 'N₂(g)': 0.0, 'N(g)': 472.7, 'NH₃(g)': -46.1, 'NH₃(aq)': -80.0, '[NH₄]⁺(aq)': -132.0, 'NO(g)': 90.3, 'NOCl(g)': 51.7, 'NO₂(g)': 33.2, 'N₂O(g)': 82.1, 'N₂O₄(g)': 9.2, 'N₂O₄(l)': -20.0, 'N₂O₅(s)': -42.0, 'N₂H₄(l)': 50.6, 'N₂H₃CH₃(l)': 54.0, 'HNO₃(aq)': -207.4, 'HNO₃(l)': -174.1, 'HNO₃(g)': -135.1, 'NH₄ClO₄(s)': -295.0, 'NH₄Cl(s)': -314.4, 'NH₄Cl(aq)': -299.7, 'NH₄NO₃(s)': -365.6, 'NH₄NO₃(aq)': -339.9, 'O₂(g)': 0.0, 'O(g)': 249.2, 'O₃(g)': 142.7, 'P (s, white)': 0.0, 'P (s, red)': -70.4, 'P (s, black)': -39.0, 'P(g)': 314.6, 'P₄(s, white)': 0.0, 'P₄(s, red)': -17.6, 'P₄(g)': 59.0, 'PF₅(g)': -1578.0, 'PH₃(g)': 5.4, 'PCl₃(g)': -287.0, 'H₃PO₄(l)': -1279.0, 'H₃PO₄(aq)': -1288.0, 'P₄O₁₀(s)': -2984.0, 'K(s)': 0.0, 'KCl(s)': -436.7, 'KClO₃(s)': -397.7, 'KClO₄(s)': -433.0, 'KI(s)': -327.9, 'K₂O(s)': -361.0, 'K₂O₂(s)': -496.0, 'KO₂(s)': -283.0, 'KOH(s)': -424.8, 'KOH(aq)': -482.4, 'Si(s)': 0.0, 'SiBr₄(l)': -457.3, 'SiC(s)': -65.3, 'SiCl₄(g)': -657.0, 'SiH₄(g)': 34.3, 'SiF₄(g)': -1614.9, 'SiO₂(s)': -910.9, 'Ag(s)': 0.0, '[Ag]⁺(aq)': 105.0, 'AgBr(s)': -100.0, 'AgCN(s)': 146.0, 'AgCl(s)': -127.1, 'Ag₂CrO₄(s)': -712.0, 'AgI(s)': -62.0, 'Ag₂O(s)': -31.1, 'AgNO₃(s)': -124.4, 'Ag₂S(s)': -32.0, 'Na(s)': 0.0, 'Na(g)': 107.3, '[Na]⁺(g)': 609.4, '[Na]⁺(aq)': -240.0, 'NaBr(s)': -361.0, 'Na₂CO₃(s)': -1130.7, 'NaHCO₃(s)': -948.0, 'NaCl(s)': -411.2, 'NaCl(g)': -176.7, 'NaCl(aq)': -407.3, 'NaH(s)': -56.0, 'NaI(s)': -288.0, 'NaNO₂(s)': -359.0, 'NaNO₃(s)': -467.0, 'Na₂O(s)': -416.0, 'Na₂O₂(s)': -515.0, 'NaOH(s)': -425.6, 'NaOH(aq)': -470.1, 'S (s, rhombic)': 0.0, 'S (s, monoclinic)': 0.3, 'S(g)': 278.8, '[S₂]⁻(aq)': 33.0, 'S₈(g)': 102.0, 'S₂Cl₂(g)': -18.4, 'SF₆(g)': -1209.0, 'H₂S(g)': -20.6, 'SO₂(g)': -296.8, 'SO₃(g)': -395.7, 'SOCl₂(g)': -212.5, '[SO₄]²⁻(aq)': -909.0, 'H₂SO₄(l)': -814.0, 'H₂SO₄(aq)': -909.3, 'Sn (s, white)': 0.0, 'Sn (s, gray)': -2.1, 'SnCl₄(l)': -511.3, 'SnCl₄(g)': -471.5, 'SnO(s)': -285.0, 'SnO₂(s)': -580.7, 'Sn(OH)₂(s)': -561.0, 'Ti(s)': 0.0, 'TiCl₄(l)': -804.2, 'TiCl₄(g)': -763.2, 'TiO₂(s)': -939.7, 'U(s)': 0.0, 'UF₆(s)': -2137.0, 'UF₆(g)': -2113.0, 'UO₂(s)': -1084.0, 'U₃O₈(s)': -3575.0, 'UO₃(s)': -1230.0}
+standard_entropy = {'Al(s)': 28.3, 'AlCl₃(s)': 110.7, 'Al₂O₃(s)': 50.9, 'Ba(s)': 67.0, 'BaCl₂(s)': 123.7, 'BaCO₃(s)': 112.0, 'BaO(s)': 70.4, 'BaSO₄(s)': 132.2, 'Be(s)': 9.5, 'BeO(s)': 14.0, 'Be(OH)₂(s)': 51.9, 'Br(g)': 175.0, 'Br₂(l)': 152.2, 'Br₂(g)': 245.5, 'Br₂(aq)': 130.0, '[Br]⁻(aq)': 82.0, 'BrF₃(g)': 292.5, 'HBr(g)': 198.7, 'Cd(s)': 52.0, 'CdO(s)': 55.0, 'Cd(OH)₂(s)': 96.0, 'CdS(s)': 65.0, 'CdSO₄(s)': 123.0, 'Ca(s)': 41.4, 'Ca(g)': 158.9, 'CaC₂(s)': 70.0, 'CaCO₃(s)': 92.9, 'CaCl₂(s)': 104.6, 'CaF₂(s)': 68.9, 'CaH₂(s)': 42.0, 'CaO(s)': 39.8, 'CaS(s)': 56.5, 'Ca(OH)₂(s)': 83.4, 'Ca(OH)₂(aq)': -74.5, 'Ca₃(PO₄)₂(s)': 241.0, 'CaSO₄(s)': 106.7, 'CaSiO₃(s)': 84.0, 'C (s, graphite)': 5.7, 'C (s, diamond)': 2.4, 'C(g)': 158.1, 'CCl₄(l)': 216.4, 'CCl₄(g)': 309.9, 'CHCl₃(l)': 201.7, 'CHCl₃(g)': 295.7, 'CH₄(g)': 186.3, 'CH₃OH(g)': 239.8, 'CH₃OH(l)': 126.8, 'H₂CO(g)': 219.0, 'HCOOH(g)': 249.0, 'HCN(g)': 202.0, 'C₂H₂(g)': 200.9, 'C₂H₄(g)': 219.6, 'CH₃CHO (g, acetaldehyde)': 250.0, 'C₂H₄O (g, ethylene oxide)': 242.0, 'CH₃CH₂OH(l)': 160.7, 'CH₃CH₂OH(g)': 282.7, 'CH₃COOH(l)': 160.0, 'C₂H₆(g)': 229.6, 'C₃H₆(g)': 266.9, 'C₃H₈(g)': 269.9, 'CH₂=CHCN(l)': 274.0, 'C₆H₆(l)': 172.8, 'C₆H₁₂O₆(s)': 212.0, 'CO(g)': 197.7, 'CO₂(g)': 213.7, 'CS₂(g)': 237.8, 'COCl₂(g)': 283.5, 'Cl(g)': 165.2, 'Cl₂(g)': 223.1, 'Cl₂(aq)': 121.0, '[Cl]⁻(aq)': 57.0, 'HCl(g)': 186.9, 'HCl(aq)': 56.5, 'Cr(s)': 23.8, 'Cr₂O₃(s)': 81.2, 'CrO₃(s)': 72.0, 'CrCl₃(s)': 123.0, 'Cu(s)': 33.2, 'CuCl₂(s)': 108.1, 'CuCO₃(s)': 88.0, 'Cu₂O(s)': 93.0, 'CuO(s)': 42.6, 'Cu(OH)₂(s)': 108.0, 'CuS(s)': 67.0, 'F₂(g)': 202.8, 'F(g)': 158.8, '[F]⁻(aq)': -13.8, 'HF(g)': 173.8, 'HF(aq)': 88.7, 'H₂(g)': 130.7, 'H(g)': 114.7, '[OH]⁻(aq)': -11.0, 'H₂O(l)': 69.9, 'H₂O(g)': 188.8, 'H₂O₂(l)': 109.6, 'I₂(s)': 116.1, 'I₂(g)': 260.7, 'I₂(aq)': 137.0, 'I(g)': 180.8, '[I]⁻(aq)': 106.0, 'ICl(g)': 247.6, 'Fe(s)': 27.8, 'Fe₃C(s)': 108.0, 'FeCl₂(s)': 118.0, 'FeCl₃(s)': 142.3, 'Fe₀.₉₅O(s) (wustite)': 59.0, 'Fe₃O₄(s)': 146.4, 'Fe₂O₃(s)': 87.4, 'FeS(s)': 67.0, 'FeS₂(s)': 52.9, 'FeSO₄(s)': 121.0, 'Fe(CO)₅(l)': 338.1, 'Pb(s)': 64.8, 'PbCl₂(s)': 136.0, 'PbO (s)': 68.7, 'PbO₂(s)': 69.0, 'PbS(s)': 91.2, 'PbSO₄(s)': 149.0, 'Mg(s)': 32.7, 'MgCl₂(s)': 89.6, 'MgCO₃(s)': 65.7, 'MgO(s)': 26.9, 'Mg(OH)₂(s)': 63.2, 'MgS(s)': 50.3, 'Mn(s)': 32.0, 'MnO(s)': 60.0, 'Mn₃O₄(s)': 149.0, 'Mn₂O₃(s)': 110.0, 'MnO₂(s)': 53.0, '[MnO₄]⁻(aq)': 190.0, 'Hg(l)': 75.9, 'HgCl₂(s)': 146.0, 'HgO (s)': 70.3, 'HgS (s)': 82.4, 'Ni(s)': 29.9, 'NiCl₂(s)': 97.7, 'NiO(s)': 38.0, 'Ni(OH)₂(s)': 79.0, 'NiS(s)': 53.0, 'N₂(g)': 191.6, 'N(g)': 153.3, 'NH₃(g)': 192.5, 'NH₃(aq)': 111.0, '[NH₄]⁺(aq)': 113.0, 'NO(g)': 210.8, 'NOCl(g)': 261.8, 'NO₂(g)': 240.1, 'N₂O(g)': 219.9, 'N₂O₄(g)': 304.3, 'N₂O₄(l)': 209.0, 'N₂O₅(s)': 178.0, 'N₂H₄(l)': 121.2, 'N₂H₃CH₃(l)': 166.0, 'HNO₃(aq)': 146.4, 'HNO₃(l)': 155.6, 'HNO₃(g)': 266.4, 'NH₄ClO₄(s)': 186.0, 'NH₄Cl(s)': 94.6, 'NH₄Cl(aq)': 169.9, 'NH₄NO₃(s)': 151.1, 'NH₄NO₃(aq)': 259.8, 'O₂(g)': 205.1, 'O(g)': 161.1, 'O₃(g)': 238.9, 'P (s, white)': 164.4, 'P (s, red)': 91.2, 'P (s, black)': 23.0, 'P(g)': 163.2, 'P₄(s, white)': 41.1, 'P₄(s, red)': 22.8, 'P₄(g)': 280.0, 'PF₅(g)': 296.0, 'PH₃(g)': 210.2, 'PCl₃(g)': 311.8, 'H₃PO₄(l)': 110.5, 'H₃PO₄(aq)': 158.0, 'P₄O₁₀(s)': 228.9, 'K(s)': 64.2, 'KCl(s)': 82.6, 'KClO₃(s)': 143.1, 'KClO₄(s)': 151.0, 'KI(s)': 106.3, 'K₂O(s)': 98.0, 'K₂O₂(s)': 113.0, 'KO₂(s)': 117.0, 'KOH(s)': 78.9, 'KOH(aq)': 91.6, 'Si(s)': 18.3, 'SiBr₄(l)': 277.8, 'SiC(s)': 16.6, 'SiCl₄(g)': 330.7, 'SiH₄(g)': 204.6, 'SiF₄(g)': 282.5, 'SiO₂(s)': 41.8, 'Ag(s)': 42.6, '[Ag]⁺(aq)': 73.0, 'AgBr(s)': 107.0, 'AgCN(s)': 84.0, 'AgCl(s)': 96.2, 'Ag₂CrO₄(s)': 217.0, 'AgI(s)': 115.0, 'Ag₂O(s)': 121.3, 'AgNO₃(s)': 140.9, 'Ag₂S(s)': 146.0, 'Na(s)': 51.2, 'Na(g)': 153.7, '[Na]⁺(aq)': 59.0, 'NaBr(s)': 86.8, 'Na₂CO₃(s)': 135.0, 'NaHCO₃(s)': 102.0, 'NaCl(s)': 72.1, 'NaCl(g)': 229.8, 'NaCl(aq)': 115.5, 'NaH(s)': 40.0, 'NaI(s)': 91.0, 'NaNO₃(s)': 116.0, 'Na₂O(s)': 73.0, 'Na₂O₂(s)': 95.0, 'NaOH(s)': 64.5, 'NaOH(aq)': 48.1, 'S (s, rhombic)': 31.8, 'S (s, monoclinic)': 33.0, 'S(g)': 167.8, '[S₂]⁻(aq)': -15.0, 'S₈(g)': 431.0, 'S₂Cl₂(g)': 331.5, 'SF₆(g)': 291.8, 'H₂S(g)': 205.8, 'SO₂(g)': 248.2, 'SO₃(g)': 256.8, 'SOCl₂(g)': 309.8, '[SO₄]²⁻(aq)': 20.0, 'H₂SO₄(l)': 156.9, 'H₂SO₄(aq)': 20.1, 'Sn (s, white)': 51.6, 'Sn (s, gray)': 44.1, 'SnCl₄(l)': 258.6, 'SnCl₄(g)': 365.8, 'SnO(s)': 56.0, 'SnO₂(s)': 52.3, 'Sn(OH)₂(s)': 155.0, 'Ti(s)': 30.6, 'TiCl₄(l)': 252.3, 'TiCl₄(g)': 354.9, 'TiO₂(s)': 49.9, 'U(s)': 50.0, 'UF₆(s)': 228.0, 'UF₆(g)': 380.0, 'UO₂(s)': 78.0, 'U₃O₈(s)': 282.0, 'UO₃(s)': 99.0}
+
+
 # Declare some constants
 R = 0.082058 * u.l * u.atm / u.mol / u.K # Ideal gas constant in L atm / (mol K)
 R2 = 8.314 * u.J / u.K / u.mol
@@ -2704,6 +2805,9 @@ second_order_rate = Solver(['1/[A]', '1/[A₀]', 'k', 't'],
 
 equil_const_convert = Solver(['Kₚ', 'K_c', 'T', 'Δn'],
                              '__K_c * (0.082058 * __T) ** __Δn - __Kₚ')
+
+gibbs_solver = Solver(['ΔG⁰', 'ΔH⁰', 'S⁰', 'T'],
+                      '__ΔH⁰ - __S⁰ * __T - __ΔG⁰')
 
 # Declare global 'x' variable
 x=symbols('x', real=True)
