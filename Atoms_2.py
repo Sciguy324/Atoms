@@ -238,6 +238,39 @@ class Charge:
             result = result[:-1]
         return result
 
+    def __hash__(self):
+        return hash(str(self))
+
+    def __eq__(self, x):
+        return hash(self) == hash(x)
+
+    @property
+    def symbol(self):
+        return str(self)
+
+    @property
+    def molar_mass(self):
+        return 0
+
+    def extract_count(self):
+        result = abs(self.charge)
+        if self.charge < 0:
+            self.charge = -1
+        elif self.charge > 0:
+            self.charge = 1
+        else:
+            raise Exception("An unknown error produced an electron with no charge")
+        return result
+
+    def copy(self):
+        return Charge(self.charge)
+
+    def _assign_oxidation(self):
+        return {self.copy(): -1}
+
+    def get_atoms(self):
+        return {self.copy(): 1}
+
     def __mul__(self, x):
         """Multiply element/molecule by 'en' or 'ep' to ionize element/molecule.  Also accepts numbers for condensation purposes."""
         if type(x) in [float, int]:
@@ -279,6 +312,14 @@ class Element:
         self.state = None
         Element.elements[symbol] = self
 
+    def __repr__(self):
+        """Return the element's symbol for string representation"""
+        return str(self.sym)
+
+    def __contains__(self, value):
+        """Return whether [value] is contained within [element]"""
+        return value in Molecule({self: 1})
+
     @property
     def molar_mass(self):
         """Returns the molar mass of the element"""
@@ -299,10 +340,6 @@ class Element:
     def copy(self):
         """Returns self.  Purely for compatibility purposes"""
         return self
-    
-    def __repr__(self):
-        """Return the element's symbol for string representation"""
-        return str(self.sym)
 
     @property
     def symbol(self):
@@ -543,12 +580,8 @@ class Element:
             # Element + Element -> Combination
             result += Molecule({x: 1})
             return result
-        elif type(x) == Molecule or type(x) == Polyatomic:
-            # Element + Molecule -> Combination
-            result += x.copy()
-            return result
-        elif type(x) == Combination:
-            # Element + Combination -> Combination
+        elif type(x) in [Molecule, Polyatomic, Charge]:
+            # Element + Molecule/Polyatomic/Combination/Charge -> Combination
             result += x.copy()
             return result
         else:
@@ -1189,7 +1222,7 @@ Why so salty?"""
     def __add__(self, x):
         count = self.extract_count()
         result = Combination({self: count})
-        if type(x) in [Molecule, Element, Polyatomic]:
+        if type(x) in [Molecule, Element, Polyatomic, Charge]:
             # Molecule + Molecule -> Combination OR
             # Molecule + Element -> Combination 
             result.append(x)
@@ -1451,7 +1484,7 @@ class Polyatomic:
         return self.__mul__(x)
 
     def __add__(self, x):
-        if type(x) in [Molecule, Polyatomic]:
+        if type(x) in [Molecule, Polyatomic, Charge]:
             # Polyatomic + Molecule -> Combination
             count = self.extract_count()
             result = Combination({self: count})
@@ -1499,8 +1532,7 @@ class Combination:
                     result[k] += m*j
                 else:
                     result[k] = m*j
-
-        #print(result)
+        
         return hash(tuple(result.items()))
 
     def __eq__(self, x):
@@ -1511,7 +1543,7 @@ class Combination:
 
     def __add__(self, x):
         result = self.copy()
-        if type(x) == Element or type(x) == Molecule or type(x) == Polyatomic:
+        if type(x) in [Element, Molecule, Polyatomic, Charge]:
             result.append(x)
             return result
         elif type(x) == Combination:
@@ -1532,6 +1564,55 @@ class Combination:
 
     def __contains__(self, key):
         return key in self.parts
+
+    def __getitem__(self, index):
+        if type(index) == int:
+            if index < len(self.parts):
+                return list(self.parts.items())[index][0]
+            else:
+                raise IndexError("Index out of range")
+        elif type(index) in [Element, Molecule, Polyatomic, Charge]:
+            if index in self:
+                find_index = 0
+                for i, j in self.parts.items():
+                    if i == index:
+                        break
+                    find_index += 1
+                return self[find_index]
+        else:
+            raise TypeError("Invalid index, expected an integer, element, molecule, or polyatomic")
+
+    def __setitem__(self, index, value):
+        """Usage: self[integer] = integer → Set the count of object at index [integer]
+self[element/molecule/polyatomic] = integer → Set the count of [element/molecule/polyatomic]
+self[integer] = element/molecule/polyatomic → Convert the object at index [integer] to [element/molecule/polyatomic]
+self[element/molecule/polyatomic] = element/molecule/polyatomic → Convert the object at index [element/molecule/polyatomic] to [element/molecule/polyatomic]"""
+        if type(index) == int:
+            if index < len(self.parts):
+                if type(value) == int:
+                    self.parts[list(self.parts.items())[index][0]] = value
+                elif type(value) in [Element, Molecule, Polyatomic, Charge]:
+                    count = self.parts[self[index]]
+                    del self.parts[self[index]]
+                    self.parts[value] = count
+                else:
+                    raise TypeError("Invalid index object, expected an integer, element, molecule, or polyatomic")
+            else:
+                raise IndexError("Index out of range")
+        elif type(index) in [Element, Molecule, Polyatomic, Charge]:
+            if index in self:
+                if type(value) == int:
+                    self[list(self.parts.items())[index][0]] = value
+                elif type(value) in [Element, Molecule, Polyatomic, Charge]:
+                    count = self.parts[self[index]]
+                    del self.parts[self[index]]
+                    self.parts[value] = count
+                else:
+                    raise TypeError("Invalid index object, expected an integer, element, molecule, or polyatomic")
+            else:
+                raise IndexError("'{}' was not found in combination".format(index))
+        else:
+            raise TypeError("Invalid index, expected an integer, element, molecule, or polyatomic")
 
     @property
     def symbol(self):
@@ -1560,11 +1641,11 @@ class Combination:
         return result
 
     def append(self, x):
-        if type(x) not in [Element, Molecule, Polyatomic]:
+        if type(x) not in [Element, Molecule, Polyatomic, Charge]:
             raise TypeError("Unable to append '{}' to 'Combination'".format(type(x)))
-        
+
         count = x.extract_count()
-        
+
         if x in self:
             self.parts[x] += count
         else:
@@ -1732,6 +1813,18 @@ class Reaction:
         else:
             raise TypeError("Unsupported operation between {} and {}".format(type(self), type(x)))
 
+    def __floordiv__(self, x):
+        if type(x) in [float, int]:
+            result = self.copy()
+            # Number * (Reaction)
+            for j, k in self.left.parts.items():
+                result.left.parts[j] //= x
+            for j, k in self.right.parts.items():
+                result.right.parts[j] //= x
+            return result
+        else:
+            raise TypeError("Unsupported operation between {} and {}".format(type(self), type(x)))
+
     def __add__(self, x):
         if type(x) is Reaction:
             result = self.copy()
@@ -1873,6 +1966,169 @@ Run the solver again without regard to charges? (Y/N): """)
         raise TimeoutError("""Unable to solve the reaction within the specified limit ({}),
 Consider raising the limit by using .solve(limit=NEW_LIMIT_HERE)""".format(limit))
 
+    def redox_solve(self, limit=20, basic=False):
+        """Balances an oxidation-reduction reaction"""
+        # oof, ⁱ ᵈᵒⁿᵗ ˡⁱᵏᵉ ᵗʰⁱˢ
+        
+        # Check for solver compatability
+        if len(self.left.parts) != 2 or len(self.right.parts) != 2:
+            raise ValueError("Solver is unable to handle this situation.  Expected form: A + B → C + D")
+        
+        # Split into half-reactions
+        a = self.left[0]
+        na = self.left.parts[a]
+
+        passed = False
+        for i in a.parts:
+            for j, k in self.right.parts.items():
+                if i not in [H, O, OH] and i in j:
+                    reaction1 = (na*a > k*j)
+                    passed = True
+                    break
+            if passed:
+                break
+        if not passed:
+            raise Exception("Unable to determine half-reactions")
+
+        b = self.left[1]
+        nb = self.left.parts[b]
+
+        passed = False
+        for i in b.parts:
+            for j, k in self.right.parts.items():
+                if (i not in [H, O, OH]) and (i in j):
+                    reaction2 = (nb*b > k*j)
+                    passed = True
+                    break
+            if passed:
+                break
+        if not passed:
+            raise Exception("Unable to determine half-reactions")
+
+        print("Half reactions:")
+        print(reaction1)
+        print(reaction2)
+        
+        # Balance everything but the oxygen and hydrogen
+        temp_reaction1 = (Molecule(dict([(i, j) for i, j in reaction1.left[0].parts.items() if i not in [H, O, OH]])) > Molecule(dict([(i, j) for i, j in reaction1.right[0].parts.items() if i not in [H, O, OH]]))).solve(ignore_charge=True)
+        temp_reaction2 = (Molecule(dict([(i, j) for i, j in reaction2.left[0].parts.items() if i not in [H, O, OH]])) > Molecule(dict([(i, j) for i, j in reaction2.right[0].parts.items() if i not in [H, O, OH]]))).solve(ignore_charge=True)
+
+        reaction1.left[0] = temp_reaction1.left.parts[temp_reaction1.left[0]]
+        reaction1.right[0] = temp_reaction1.right.parts[temp_reaction1.right[0]]
+        reaction2.left[0] = temp_reaction2.left.parts[temp_reaction2.left[0]]
+        reaction2.right[0] = temp_reaction2.right.parts[temp_reaction2.right[0]]
+        del temp_reaction1
+        del temp_reaction2
+
+        print("\nHalf reaction (semi-balanced):")
+        print(reaction1)
+        print(reaction2)
+        
+        # Balance the oxygen by adding H₂O
+        try:
+            r1_L = reaction1.left.get_atoms()[O]
+        except KeyError:
+            r1_L = 0
+        try:
+            r1_R = reaction1.right.get_atoms()[O]
+        except KeyError:
+            r1_R = 0
+        if r1_L > r1_R:
+            reaction1.right += (r1_L - r1_R) * (H*H*O)
+        elif r1_L < r1_R:
+            reaction1.left += (r1_R - r1_L) * (H*H*O)
+
+        try:
+            r2_L = reaction2.left.get_atoms()[O]
+        except KeyError:
+            r2_L = 0
+        try:
+            r2_R = reaction2.right.get_atoms()[O]
+        except KeyError:
+            r2_R = 0
+        if r2_L > r2_R:
+            reaction2.right += (r2_L - r2_R) * (H*H*O)
+        elif r2_L < r2_R:
+            reaction2.left += (r2_R - r2_L) * (H*H*O)
+        
+        # Balance the hydrogen by adding H⁺
+        try:
+            r1_L = reaction1.left.get_atoms()[H]
+        except KeyError:
+            r1_L = 0
+        try:
+            r1_R = reaction1.right.get_atoms()[H]
+        except KeyError:
+            r1_R = 0
+        if r1_L > r1_R:
+            reaction1.right += (r1_L - r1_R) * (H*ep)
+        elif r1_L < r1_R:
+            reaction1.left += (r1_R - r1_L) * (H*ep)
+            
+        try:
+            r2_L = reaction2.left.get_atoms()[H]
+        except KeyError:
+            r2_L = 0
+        try:
+            r2_R = reaction2.right.get_atoms()[H]
+        except KeyError:
+            r2_R = 0
+        if r2_L > r2_R:
+            reaction2.right += (r2_L - r2_R) * (H*ep)
+        elif r2_L < r2_R:
+            reaction2.left += (r2_R - r2_L) * (H*ep)
+
+        print("\nAtomically balanced half reactions:")
+        print(reaction1)
+        print(reaction2)
+
+        # Balance charge by adding electrons
+        r1_L = sum([i.charge * j for i, j in reaction1.left.parts.items()])
+        r1_R = sum([i.charge * j for i, j in reaction1.right.parts.items()])
+        if r1_L > r1_R:
+            for i in range(r1_L - r1_R):
+                reaction1.left += en
+        elif r1_R > r1_L:
+            for i in range(r1_R - r1_L):
+                reaction1.right += en
+
+        r2_L = sum([i.charge * j for i, j in reaction2.left.parts.items()])
+        r2_R = sum([i.charge * j for i, j in reaction2.right.parts.items()])
+        if r2_L > r2_R:
+            for i in range(r2_L - r2_R):
+                reaction2.left += en
+        elif r2_R > r2_L:
+            for i in range(r2_R - r2_L):
+                reaction2.right += en
+
+        if abs(r2_R - r2_L) != abs(r1_L - r1_R):
+            reaction1 = abs(r2_R - r2_L) * reaction1
+            reaction2 = abs(r1_L - r1_R) * reaction2
+
+        print("\nCharge balanced half reactions")
+        print(reaction1)
+        print(reaction2)
+        
+        # Recombine the half reaction such that the electrons cancel
+        full_reaction = reaction1 + reaction2
+        full_reaction = full_reaction.simplify()
+        
+        # (Conditional) If in a basic solution, neutralize the H⁺ by adding OH⁻ to both sides
+        if basic:
+            if H*ep in full_reaction.left:
+                full_reaction.right += full_reaction.left.parts[H*ep] * (O*H*en)
+                full_reaction.left[H*ep] = H*H*O
+            elif H*ep in full_reaction.right:
+                full_reaction.left += full_reaction.right.parts[H*ep] * (O*H*en)
+                full_reaction.right[H*ep] = H*H*O
+
+            full_reaction = full_reaction.simplify()
+
+
+        print("\nFull Reaction:")
+        return full_reaction
+        
+
     def scale(self, factor):
         """Scales a reaction by an amount"""
         new_left = self.left.copy()
@@ -1943,6 +2199,41 @@ Consider raising the limit by using .solve(limit=NEW_LIMIT_HERE)""".format(limit
     def dissolve(self, ignore_ph=True):
         """Dissolves both sides of the chemical equation"""
         return Reaction(self.left.dissolve(not ignore_ph), self.right.dissolve())
+
+    def simplify(self):
+        """Cancels out matching components present on both sides of a reaction"""
+        new_left = Combination({})
+        new_right = Combination({})
+        for i, j in self.left.parts.items():
+            if i in self.right.parts:
+                if i.charge != self.right[i].charge:
+                    new_left += j * i.copy()
+                # More of object on left side
+                if self.right.parts[i] < j:
+                    new_left += (j - self.right.parts[i]) * i.copy()
+                # Objects were present in equal quantities
+            # Object was not present on other side
+            else:
+                new_left += j * i.copy()
+        for i, j in self.right.parts.items():
+            if i in self.left.parts:
+                if i.charge != self.left[i].charge:
+                    new_right += self.left.parts[i] * i.copy()
+                # More of object on left side
+                if self.left.parts[i] < j:
+                    new_right += (j - self.left.parts[i]) * i.copy()
+                # Objects were present in equal quantities
+            # Object was not present on other side
+            else:
+                new_right += j * i.copy()
+
+        result = new_left > new_right
+
+        # Factor out coefficients
+        gcd = find_gcd([j for i, j in result.left.parts.items()] + [j for i, j in result.right.parts.items()])
+        result //= gcd
+        
+        return result
 
     def net_ionic(self, auto_balance=False):
         """Generate the net ionic equation of a reaction thing"""
