@@ -76,6 +76,10 @@ def docs(search=None):
             print("")
     if search is None: print("\nExample of syntax:\n  Mg*ep*ep*aq + Ba*(2*NO3)*aq > Ba*ep*ep*aq + Mg*(2*NO3)*aq\nBecomes:\n", Mg*ep*ep*aq + Ba*(2*NO3)*aq > Ba*ep*ep*aq + Mg*(2*NO3)*aq)
 
+def clear(n=35):
+    """Clears the console"""
+    print("\n"*n)
+
 class Solver:
     """Utility/wrapping class used when it is necessary to solve for a specific variable.
 See bottom of file for declared solvers"""
@@ -587,6 +591,14 @@ class Element:
         else:
             # Invalid operation
             raise TypeError("Unsupported operation between {} and {}".format(type(self), type(x)))
+
+    def __gt__(self, x):
+        if type(x) == Element:
+            return (1*self) > (1*x)
+        elif type(x) == Molecule:
+            return (1*self) > x
+        elif type(x) == Combination:
+            return (1*self) > x
 
 class Molecule:
     """Class for molecules"""
@@ -1556,6 +1568,8 @@ class Combination:
     def __gt__(self, x):
         if type(x) == Combination:
             return Reaction(self, x)
+        elif type(x) == Element:
+            return Reaction(self, Combination({1*x: 1}))
         elif type(x) == Molecule:
             count = x.extract_count()
             return Reaction(self, Combination({x: count}))
@@ -3100,6 +3114,9 @@ equil_const_convert = Solver(['Kₚ', 'K_c', 'T', 'Δn'],
 gibbs_solver = Solver(['ΔG⁰', 'ΔH⁰', 'S⁰', 'T'],
                       '__ΔH⁰ - __S⁰ * __T - __ΔG⁰')
 
+nernst_solver = Solver(['ε(cell)', 'ε°(cell)', 'T', 'n', 'ln(Q)'],
+                       '__ε°(cell) - 8.314/96485*__T/__n*__ln(Q) - __ε(cell)')
+
 # Declare global 'x' variable
 x=symbols('x', real=True)
 
@@ -3109,9 +3126,6 @@ if DEBUG: print("[Debug]: {} Polyatomic ions loaded".format(len(Polyatomic.polya
 do_debug = True
 
 # EXPERIMENTAL FUNCTIONS
-def clear(n=35):
-    """Clears the console"""
-    print("\n"*n)
 
 def dissolve_in_ph(salt, k_sp, ka):
     """[NOT GUARANTEED TO BE STABLE, OR WORK, AT ALL]
