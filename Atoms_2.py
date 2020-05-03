@@ -37,8 +37,15 @@ def rate(molarity_a:list, molarity_b:list, rates:list):
     order_a = float(input("Order A guess: "))
     order_b = float(input("Order B guess: "))
     print("Resulting rate constants:")
+    result = []
     for i, (j, k, l) in enumerate(zip(molarity_a, molarity_b, rates)):
+        result.append(l / (j ** order_a * k ** order_b))
         print(i, "-", l / (j ** order_a * k ** order_b))
+    if result.count(result[0]) == len(result):
+        print("Order guesses were correct")
+    else:
+        print("Order guesses were likely incorrect")
+    
 
 def conv_unit(x, unit1, unit2):
     """Utility function for pressure unit conversion"""
@@ -1981,7 +1988,7 @@ Run the solver again without regard to charges? (Y/N): """)
 Consider raising the limit by using .solve(limit=NEW_LIMIT_HERE)""".format(limit))
 
     def redox_solve(self, limit=20, basic=False):
-        """Balances an oxidation-reduction reaction"""
+        """Balances an oxidation-reduction reaction.  For basic conditions, use the optional argument basic=True."""
         # oof, ⁱ ᵈᵒⁿᵗ ˡⁱᵏᵉ ᵗʰⁱˢ
         
         # Check for solver compatability
